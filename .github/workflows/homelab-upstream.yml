@@ -1,0 +1,99 @@
+# homelab: раз в день вливает свежий релиз upstream в homelab и выкатывает (см. HOMELAB.md).
+# Конфликт или упавшие тесты — прод не трогаем: issue в репозитории и уведомление в ntfy.
+name: Upstream (homelab)
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # 06:17 МСК
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Тег upstream (пусто — последний релиз MatriX.*)
+        required: false
+        default: ""
+
+# push идёт deploy-ключом SYNC_DEPLOY_KEY (с правом записи), а не токеном Actions: токену нельзя пушить
+# коммиты, меняющие .github/workflows (upstream свои меняет), и его push не запускает homelab-deploy.yml.
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: homelab-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: homelab
+          fetch-depth: 0
+          ssh-key: ${{ secrets.SYNC_DEPLOY_KEY }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 16 # как в Dockerfile upstream: react-scripts 4
+
+      - name: Влить релиз upstream
+        id: sync
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          scripts/homelab-sync.sh --web $TAG || true
+
+      - name: Отправить в homelab (push запускает homelab-deploy.yml)
+        if: steps.sync.outputs.status == 'merged'
+        run: |
+          git push origin HEAD:homelab
+          # master — зеркало upstream (workflow upstream в форке выключены, см. HOMELAB.md)
+          git push origin refs/remotes/upstream/master:refs/heads/master || true
+
+      - name: Issue о проблеме
+        if: steps.sync.outputs.status == 'conflict' || steps.sync.outputs.status == 'failed'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.sync.outputs.tag }}
+          STATUS: ${{ steps.sync.outputs.status }}
+          DETAILS: ${{ steps.sync.outputs.details }}
+        run: |
+          title="Не удалось влить upstream $TAG"
+          body=$(printf '%s\n\n```\n%s\n```\n\nПрогон: %s\n\nКак разрешить — HOMELAB.md, раздел «Если автоматика не справилась».' \
+            "Статус: $STATUS" "$DETAILS" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID")
+          existing=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+
+      - name: Уведомление в ntfy
+        if: steps.sync.outputs.status == 'merged' || steps.sync.outputs.status == 'conflict' || steps.sync.outputs.status == 'failed'
+        env:
+          NTFY_URL: ${{ secrets.NTFY_URL }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          TAG: ${{ steps.sync.outputs.tag }}
+          STATUS: ${{ steps.sync.outputs.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -n "$NTFY_URL" ] && [ -n "$NTFY_TOKEN" ] || { echo "ntfy не настроен"; exit 0; }
+          if [ "$STATUS" = merged ]; then
+            title="TorrServer: влит $TAG"; msg="Наши доработки на месте, тесты прошли. Выкатка запущена."; prio=2
+          else
+            title="TorrServer: не удалось влить $TAG"; msg="Прод не тронут. Нужны руки: см. issue в pxlvoid/TorrServer."; prio=4
+          fi
+          # JSON, а не заголовки: в HTTP-заголовке Title кириллица не проходит
+          jq -n --arg title "$title" --arg msg "$msg" --arg click "$RUN_URL" --argjson prio "$prio" \
+            '{topic: "updates", title: $title, message: $msg, priority: $prio, tags: ["package"], click: $click}' \
+            | curl -fsS -H "Authorization: Bearer $NTFY_TOKEN" -H "Content-Type: application/json" -d @- "$NTFY_URL" > /dev/null
+
+      - name: Итог
+        if: steps.sync.outputs.status == 'conflict' || steps.sync.outputs.status == 'failed'
+        run: exit 1

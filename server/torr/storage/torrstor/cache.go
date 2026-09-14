@@ -82,6 +82,7 @@ func (c *Cache) Init(info *metainfo.Info, hash metainfo.Hash) {
 	for i := 0; i < c.pieceCount; i++ {
 		c.pieces[i] = NewPiece(i, c)
 	}
+	hlOnInit(c, info) // homelab: persistent disk cache
 
 	go c.priorityWatchdog()
 }
@@ -132,7 +133,7 @@ func (c *Cache) readersSnapshot() []*Reader {
 
 func (c *Cache) Piece(m metainfo.Piece) storage.PieceImpl {
 	if val, ok := c.getPieces()[m.Index()]; ok {
-		return val
+		return hlPieceImpl(c, val) // homelab: wrapper keeps the verified bitmap
 	}
 	return &PieceFake{}
 }
@@ -144,10 +145,11 @@ func (c *Cache) Close() error {
 		log.TLogln("Close cache for:", c.hash)
 	}
 	c.isClosed.Store(true)
+	hlKeep := hlOnClose(c) // homelab: persistent cache survives drop
 
 	c.storage.removeCache(c.hash)
 
-	if settings.BTsets.RemoveCacheOnDrop {
+	if settings.BTsets.RemoveCacheOnDrop && !hlKeep { // homelab: && !hlKeep
 		name := filepath.Join(settings.BTsets.TorrentsSavePath, c.hash.HexString())
 		if name != "" && name != "/" {
 			for _, v := range c.getPieces() {
@@ -246,6 +248,9 @@ func (c *Cache) cleanPieces() {
 	defer func() { c.isRemove.Store(false) }()
 
 	remPieces := c.getRemPieces()
+	if hlOwnsEviction(c) { // homelab: persistent mode — only the janitor evicts
+		return
+	}
 	if c.filled > c.capacity {
 		rems := (c.filled-c.capacity)/c.pieceLength + 1
 		for _, p := range remPieces {

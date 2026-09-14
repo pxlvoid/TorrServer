@@ -1,0 +1,32 @@
+# homelab: проверка и выкатка ветки homelab на сервер (см. HOMELAB.md).
+# Сборка образа — на сервере (Dockerfile upstream), здесь только тесты и кнопка общего деплоя.
+name: Deploy (homelab)
+
+on:
+  push:
+    branches: [homelab]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Крючки и тесты
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - run: scripts/homelab-sync.sh --check
+
+  deploy:
+    needs: check
+    uses: pxlvoid/deploy/.github/workflows/deploy.yml@v1
+    with:
+      project: torrserver
+    secrets:
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SERVER: ${{ secrets.DEPLOY_SERVER }}

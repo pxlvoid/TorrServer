@@ -1,0 +1,68 @@
+// homelab: strings of the disk cache dialog. Added at runtime instead of editing locales/*.json,
+// so upstream translation updates never conflict with the fork (see HOMELAB.md).
+import i18n from '../../i18n'
+
+const en = {
+  Homelab: {
+    DiskCache: 'Disk cache',
+    Build: 'homelab build on {{upstream}}',
+    NotReady: 'Disk cache is off. Enable “Use disk” and set the cache path in Settings, then turn this on.',
+    Used: '{{used}} of {{limit}}',
+    UsedNoLimit: '{{used}} used, no limit',
+    DiskFree: '{{free}} free on disk · {{path}}',
+    Persistent: 'Keep watched on disk',
+    PersistentHelp: 'The cache is not overwritten while you watch: only the limit and the age clean it up.',
+    Limit: 'Limit, GB',
+    LimitHelp: '0 — no limit (5 GB are always kept free)',
+    KeepDays: 'Keep, days',
+    KeepDaysHelp: '0 — forever. Pinned is never removed',
+    Save: 'Save',
+    Saved: 'Saved',
+    Empty: 'Nothing is cached yet',
+    Playing: 'Playing',
+    Open: 'Loaded',
+    OfTorrent: '{{percent}}% of torrent',
+    Pin: 'Pin: never remove automatically',
+    Unpin: 'Unpin',
+    Remove: 'Remove from cache',
+    RemovePlaying: 'Playing now: only the part outside the player window will be removed',
+    ClearAll: 'Clear all unpinned',
+    Freed: 'Freed {{size}}',
+    Close: 'Close',
+    Refresh: 'Refresh',
+  },
+}
+
+const ru = {
+  Homelab: {
+    DiskCache: 'Кэш на диске',
+    Build: 'сборка homelab на {{upstream}}',
+    NotReady: 'Кэш на диске выключен. Включите «Использовать диск» и укажите путь в Настройках, затем включите здесь.',
+    Used: '{{used}} из {{limit}}',
+    UsedNoLimit: 'Занято {{used}}, без лимита',
+    DiskFree: 'Свободно на диске {{free}} · {{path}}',
+    Persistent: 'Хранить просмотренное на диске',
+    PersistentHelp: 'Кэш не затирается во время просмотра: чистится только по лимиту и сроку хранения.',
+    Limit: 'Лимит, ГБ',
+    LimitHelp: '0 — без лимита (5 ГБ всегда остаются свободными)',
+    KeepDays: 'Хранить, дней',
+    KeepDaysHelp: '0 — бессрочно. Закреплённое не удаляется',
+    Save: 'Сохранить',
+    Saved: 'Сохранено',
+    Empty: 'В кэше пока ничего нет',
+    Playing: 'Смотрят сейчас',
+    Open: 'Загружен',
+    OfTorrent: '{{percent}}% торрента',
+    Pin: 'Закрепить: не удалять автоматически',
+    Unpin: 'Открепить',
+    Remove: 'Удалить из кэша',
+    RemovePlaying: 'Сейчас смотрят: удалится всё, кроме окна плеера',
+    ClearAll: 'Очистить незакреплённое',
+    Freed: 'Освобождено {{size}}',
+    Close: 'Закрыть',
+    Refresh: 'Обновить',
+  },
+}
+
+i18n.addResourceBundle('en', 'translation', en, true, false)
+i18n.addResourceBundle('ru', 'translation', ru, true, false)

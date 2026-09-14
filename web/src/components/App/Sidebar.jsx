@@ -16,6 +16,7 @@ import CheckIcon from '@material-ui/icons/Check'
 import ClearIcon from '@material-ui/icons/Clear'
 import { TORRENT_CATEGORIES } from 'components/categories'
 import FilterByCategory from 'components/FilterByCategory'
+import HomelabDiskCacheButton from 'components/Homelab' // homelab
 
 import { AppSidebarStyle } from './style'
 
@@ -62,6 +63,9 @@ const Sidebar = ({ isDrawerOpen, setIsDonationDialogOpen, isOffline, isLoading, 
       <Divider />
 
       <List>
+        {/* homelab: persistent disk cache */}
+        <HomelabDiskCacheButton isOffline={isOffline} isLoading={isLoading} />
+
         <SettingsDialog isOffline={isOffline} isLoading={isLoading} />
 
         <AboutDialog />

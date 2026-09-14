@@ -87,6 +87,9 @@ func cleanCache() {
 	if !settings.BTsets.UseDisk || settings.BTsets.TorrentsSavePath == "/" || settings.BTsets.TorrentsSavePath == "" {
 		return
 	}
+	if settings.HomelabPersistentCache() { // homelab: persistent cache is not wiped on start
+		return
+	}
 
 	dirs, err := os.ReadDir(settings.BTsets.TorrentsSavePath)
 	if err != nil {

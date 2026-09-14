@@ -171,7 +171,7 @@ func RemTorrent(hashHex string) {
 	if torr == nil {
 		// If the torrent isn't in memory, just delete it from the database and the files
 		RemTorrentDB(hash)
-		if sets.BTsets.UseDisk && hashHex != "" && hashHex != "/" {
+		if sets.BTsets.UseDisk && hashHex != "" && hashHex != "/" && !sets.HomelabPersistentCache() { // homelab
 			name := filepath.Join(sets.BTsets.TorrentsSavePath, hashHex)
 			os.RemoveAll(name)
 		}
@@ -192,7 +192,7 @@ func RemTorrent(hashHex string) {
 		}
 
 		// Now we can safely delete the files from the disk
-		if sets.BTsets.UseDisk && hashHex != "" && hashHex != "/" {
+		if sets.BTsets.UseDisk && hashHex != "" && hashHex != "/" && !sets.HomelabPersistentCache() { // homelab
 			name := filepath.Join(sets.BTsets.TorrentsSavePath, hashHex)
 			if _, err := os.Stat(name); err == nil {
 				log.TLogln("Removing cache files for:", hashHex)

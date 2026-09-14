@@ -68,4 +68,6 @@ func SetupRoute(route gin.IRouter) {
 	// FFProbe
 	authorized.GET("/ffp/status", ffprobeStatus)
 	authorized.GET("/ffp/:hash/:id", ffp)
+
+	homelabRoutes(authorized) // homelab: persistent disk cache API
 }
