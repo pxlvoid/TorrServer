@@ -2,27 +2,19 @@
 // Accent is "secondary": in the dark theme TorrServer's primary (#323637) is the dialog background.
 import axios from 'axios'
 import {
-  Avatar,
   Box,
   Button,
-  Chip,
   CircularProgress,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControlLabel,
   IconButton,
-  LinearProgress,
-  List,
-  ListItem,
-  ListItemAvatar,
-  ListItemSecondaryAction,
-  ListItemText,
   Switch,
   TextField,
   Tooltip,
   Typography,
   useMediaQuery,
+  useTheme,
 } from '@material-ui/core'
 import DeleteIcon from '@material-ui/icons/Delete'
 import MovieIcon from '@material-ui/icons/Movie'
@@ -36,6 +28,20 @@ import { humanizeSize } from 'utils/Utils'
 import useOnStandaloneAppOutsideClick from 'utils/useOnStandaloneAppOutsideClick'
 
 import UnsafeButton from '../UnsafeButton'
+import { parseTitle } from './parseTitle'
+import {
+  Actions,
+  Bar,
+  Card,
+  CardList,
+  Info,
+  PlayingBadge,
+  Poster,
+  Section,
+  SettingsForm,
+  SettingsRow,
+  UsageRow,
+} from './style'
 
 const cacheHost = () => `${getTorrServerHost()}/homelab/cache`
 const settingsHost = () => `${getTorrServerHost()}/homelab/settings`
@@ -70,39 +76,45 @@ function useRelativeTime() {
   )
 }
 
-function CacheItem({ item, busy, onPin, onRemove }) {
+function CacheCard({ item, busy, dark, onPin, onRemove }) {
   const { t } = useTranslation()
   const relativeTime = useRelativeTime()
-  const title = item.title || item.name || item.hash.slice(0, 12)
-  const percent = item.totalLength ? Math.round((item.size / item.totalLength) * 100) : null
-  const details = [
-    humanizeSize(item.size),
-    percent !== null && t('Homelab.OfTorrent', { percent }),
+  const [posterFailed, setPosterFailed] = useState(false)
+  const fullName = item.title || item.name || item.hash
+  const { title, subtitle } = parseTitle(fullName)
+  const percent = item.totalLength ? (item.size / item.totalLength) * 100 : null
+  const stats = [
+    item.totalLength
+      ? t('Homelab.SizeOf', { size: humanizeSize(item.size), total: humanizeSize(item.totalLength) })
+      : humanizeSize(item.size),
     relativeTime(item.lastAccess),
   ].filter(Boolean)
 
   return (
-    // room for two icon buttons of ListItemSecondaryAction (MUI reserves only one)
-    <ListItem divider style={{ paddingRight: 112 }}>
-      <ListItemAvatar>
-        <Avatar variant='rounded' src={item.poster || undefined} alt=''>
+    <Card pinned={item.pinned} dark={dark}>
+      <Poster>
+        {item.poster && !posterFailed ? (
+          <img src={item.poster} alt='' loading='lazy' onError={() => setPosterFailed(true)} />
+        ) : (
           <MovieIcon />
-        </Avatar>
-      </ListItemAvatar>
-      <ListItemText
-        primary={
-          <Box display='flex' alignItems='center' flexWrap='wrap' style={{ gap: 6 }}>
-            <span style={{ wordBreak: 'break-word' }}>{title}</span>
-            {item.playing ? (
-              <Chip size='small' color='secondary' label={t('Homelab.Playing')} />
-            ) : item.open ? (
-              <Chip size='small' variant='outlined' label={t('Homelab.Open')} />
-            ) : null}
-          </Box>
-        }
-        secondary={details.join(' · ')}
-      />
-      <ListItemSecondaryAction>
+        )}
+        {item.playing && (
+          <PlayingBadge dark={dark} title={t('Homelab.Playing')}>
+            {t('Homelab.PlayingShort')}
+          </PlayingBadge>
+        )}
+      </Poster>
+
+      <Info title={fullName}>
+        <div className='card-title'>{title}</div>
+        {subtitle && <div className='card-subtitle'>{subtitle}</div>}
+        <div className='card-stats'>
+          {percent !== null && <Bar thin dark={dark} value={percent} style={{ marginBottom: 6 }} />}
+          {stats.join(' · ')}
+        </div>
+      </Info>
+
+      <Actions>
         <Tooltip title={item.pinned ? t('Homelab.Unpin') : t('Homelab.Pin')}>
           <span>
             <IconButton disabled={busy} onClick={() => onPin(item)} color={item.pinned ? 'secondary' : 'default'}>
@@ -117,18 +129,20 @@ function CacheItem({ item, busy, onPin, onRemove }) {
             </IconButton>
           </span>
         </Tooltip>
-      </ListItemSecondaryAction>
-    </ListItem>
+      </Actions>
+    </Card>
   )
 }
 
 export default function DiskCacheDialog({ handleClose }) {
   const { t } = useTranslation()
   const fullScreen = useMediaQuery('@media (max-width:930px)')
+  const dark = useTheme().palette.type === 'dark'
   const ref = useOnStandaloneAppOutsideClick(handleClose)
 
   const [data, setData] = useState(null)
   const [form, setForm] = useState(null)
+  const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -163,17 +177,17 @@ export default function DiskCacheDialog({ handleClose }) {
     return () => clearInterval(id)
   }, [call])
 
-  const saveSettings = () => {
+  const saveSettings = sets => {
     setBusy(true)
-    const sets = {
-      persistentCache: form.persistentCache,
-      limitGB: Math.max(0, parseInt(form.limitGB, 10) || 0),
-      keepDays: Math.max(0, parseInt(form.keepDays, 10) || 0),
-    }
     axios
-      .post(settingsHost(), sets)
+      .post(settingsHost(), {
+        persistentCache: sets.persistentCache,
+        limitGB: Math.max(0, parseInt(sets.limitGB, 10) || 0),
+        keepDays: Math.max(0, parseInt(sets.keepDays, 10) || 0),
+      })
       .then(({ data }) => {
         setForm(data)
+        setEditing(false)
         setMessage(t('Homelab.Saved'))
         setError('')
         return call({ action: 'list' }, false)
@@ -183,14 +197,18 @@ export default function DiskCacheDialog({ handleClose }) {
   }
 
   const usage = data?.usage
+  const saved = data?.settings
   const items = data?.items || []
   const dirty =
     form &&
-    data &&
-    (form.persistentCache !== data.settings.persistentCache ||
-      String(form.limitGB) !== String(data.settings.limitGB) ||
-      String(form.keepDays) !== String(data.settings.keepDays))
-  const usedPercent = usage?.limit ? Math.min(100, (usage.used / usage.limit) * 100) : 0
+    saved &&
+    (String(form.limitGB) !== String(saved.limitGB) || String(form.keepDays) !== String(saved.keepDays))
+  const settingsSummary = saved
+    ? [
+        saved.limitGB ? t('Homelab.SummaryLimit', { limit: saved.limitGB }) : t('Homelab.SummaryNoLimit'),
+        saved.keepDays ? t('Homelab.SummaryDays', { count: saved.keepDays }) : t('Homelab.SummaryForever'),
+      ].join(' · ')
+    : ''
 
   return (
     <StyledDialog open onClose={handleClose} fullScreen={fullScreen} fullWidth maxWidth='md' ref={ref}>
@@ -206,84 +224,92 @@ export default function DiskCacheDialog({ handleClose }) {
       <DialogContent dividers>
         {!data ? (
           <Box display='flex' justifyContent='center' p={4}>
-            {error ? <Typography color='error'>{error}</Typography> : <CircularProgress />}
+            {error ? <Typography color='error'>{error}</Typography> : <CircularProgress color='secondary' />}
           </Box>
         ) : (
           <>
-            {!usage.ready && (
-              <Box mb={2}>
+            {!usage.ready ? (
+              <Section>
                 <Typography color='error'>{t('Homelab.NotReady')}</Typography>
-              </Box>
+              </Section>
+            ) : (
+              <Section>
+                <UsageRow>
+                  <span className='usage-main'>
+                    {usage.limit
+                      ? t('Homelab.Used', { used: humanizeSize(usage.used) || '0', limit: humanizeSize(usage.limit) })
+                      : t('Homelab.UsedNoLimit', { used: humanizeSize(usage.used) || '0' })}
+                  </span>
+                  {!!usage.diskTotal && (
+                    <span className='usage-side'>{t('Homelab.DiskFree', { free: humanizeSize(usage.diskFree) })}</span>
+                  )}
+                </UsageRow>
+                {!!usage.limit && <Bar dark={dark} value={(usage.used / usage.limit) * 100} />}
+              </Section>
             )}
 
-            {usage.ready && (
-              <Box mb={2}>
-                <Typography>
-                  {usage.limit
-                    ? t('Homelab.Used', { used: humanizeSize(usage.used) || '0', limit: humanizeSize(usage.limit) })
-                    : t('Homelab.UsedNoLimit', { used: humanizeSize(usage.used) || '0' })}
-                </Typography>
-                {!!usage.limit && (
-                  <Box my={1}>
-                    <LinearProgress variant='determinate' color='secondary' value={usedPercent} />
-                  </Box>
-                )}
-                {!!usage.diskTotal && (
-                  <Typography variant='caption' color='textSecondary'>
-                    {t('Homelab.DiskFree', { free: humanizeSize(usage.diskFree), path: usage.path })}
-                  </Typography>
-                )}
-              </Box>
-            )}
+            {saved && (
+              <Section>
+                <SettingsRow dark={dark}>
+                  <div className='settings-summary'>
+                    {t('Homelab.PersistentShort')}
+                    <small>{saved.persistentCache ? settingsSummary : t('Homelab.PersistentOff')}</small>
+                  </div>
+                  <Button size='small' disabled={!usage.ready} onClick={() => setEditing(!editing)}>
+                    {editing ? t('Homelab.Cancel') : t('Homelab.Edit')}
+                  </Button>
+                  <Switch
+                    color='secondary'
+                    checked={saved.persistentCache}
+                    disabled={!usage.ready || busy}
+                    onChange={e => saveSettings({ ...saved, persistentCache: e.target.checked })}
+                  />
+                </SettingsRow>
 
-            {form && (
-              <Box mb={2}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      color='secondary'
-                      checked={form.persistentCache}
-                      disabled={!usage.ready}
-                      onChange={e => setForm({ ...form, persistentCache: e.target.checked })}
-                    />
-                  }
-                  label={t('Homelab.Persistent')}
-                />
-                <Typography variant='body2' color='textSecondary'>
-                  {t('Homelab.PersistentHelp')}
-                </Typography>
-                <Box display='flex' flexWrap='wrap' alignItems='flex-start' mt={1} style={{ gap: 16 }}>
-                  <TextField
-                    type='number'
-                    label={t('Homelab.Limit')}
-                    helperText={t('Homelab.LimitHelp')}
-                    value={form.limitGB}
-                    inputProps={{ min: 0 }}
-                    onChange={e => setForm({ ...form, limitGB: e.target.value })}
-                  />
-                  <TextField
-                    type='number'
-                    label={t('Homelab.KeepDays')}
-                    helperText={t('Homelab.KeepDaysHelp')}
-                    value={form.keepDays}
-                    inputProps={{ min: 0 }}
-                    onChange={e => setForm({ ...form, keepDays: e.target.value })}
-                  />
-                  <Box pt={1}>
-                    <Button variant='contained' color='secondary' disabled={!dirty || busy} onClick={saveSettings}>
-                      {t('Homelab.Save')}
-                    </Button>
-                  </Box>
-                </Box>
-              </Box>
+                {editing && form && (
+                  <SettingsForm>
+                    <Typography variant='body2' color='textSecondary'>
+                      {t('Homelab.PersistentHelp')}
+                    </Typography>
+                    <div className='settings-fields'>
+                      <TextField
+                        type='number'
+                        label={t('Homelab.Limit')}
+                        helperText={t('Homelab.LimitHelp')}
+                        value={form.limitGB}
+                        inputProps={{ min: 0 }}
+                        onChange={e => setForm({ ...form, limitGB: e.target.value })}
+                      />
+                      <TextField
+                        type='number'
+                        label={t('Homelab.KeepDays')}
+                        helperText={t('Homelab.KeepDaysHelp')}
+                        value={form.keepDays}
+                        inputProps={{ min: 0 }}
+                        onChange={e => setForm({ ...form, keepDays: e.target.value })}
+                      />
+                      <Box pt={1}>
+                        <Button
+                          variant='contained'
+                          color='secondary'
+                          disabled={!dirty || busy}
+                          onClick={() => saveSettings({ ...form, persistentCache: saved.persistentCache })}
+                        >
+                          {t('Homelab.Save')}
+                        </Button>
+                      </Box>
+                    </div>
+                  </SettingsForm>
+                )}
+              </Section>
             )}
 
             {(message || error) && (
-              <Box mb={1}>
+              <Section>
                 <Typography variant='body2' color={error ? 'error' : 'textSecondary'}>
                   {error || message}
                 </Typography>
-              </Box>
+              </Section>
             )}
 
             {items.length === 0 ? (
@@ -291,17 +317,18 @@ export default function DiskCacheDialog({ handleClose }) {
                 <Typography color='textSecondary'>{t('Homelab.Empty')}</Typography>
               </Box>
             ) : (
-              <List disablePadding>
+              <CardList>
                 {items.map(item => (
-                  <CacheItem
+                  <CacheCard
                     key={item.hash}
                     item={item}
                     busy={busy}
+                    dark={dark}
                     onPin={it => call({ action: 'pin', hash: it.hash, pinned: !it.pinned })}
                     onRemove={it => call({ action: 'remove', hash: it.hash })}
                   />
                 ))}
-              </List>
+              </CardList>
             )}
           </>
         )}
