@@ -58,6 +58,10 @@ run_checks() {
   log=$(cd server && go vet ./torr/storage/torrstor/ ./web/api/ 2>&1 && go test -count=1 ./torr/storage/torrstor/ ./settings/ 2>&1 && go build ./... 2>&1) \
     || { echo "$log" | tail -40; return 1; }
   if [ "$WEB" = 1 ]; then
+    # react-scripts 4 на node ≥ 17 падает на md4 в webpack без legacy provider
+    if [ "$(node -p 'process.versions.node.split(".")[0]')" -ge 17 ]; then
+      export NODE_OPTIONS="${NODE_OPTIONS:-} --openssl-legacy-provider"
+    fi
     log=$(cd web && yarn install --frozen-lockfile --silent 2>&1 && npx eslint --ext .js,.jsx src/components/Homelab 2>&1 && CI=false yarn build 2>&1) \
       || { echo "$log" | tail -40; return 1; }
   fi
