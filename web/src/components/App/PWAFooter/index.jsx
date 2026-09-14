@@ -5,6 +5,7 @@ import { StyledMenuButtonWrapper } from 'style/CustomMaterialUiStyles'
 import AddDialogButton from 'components/Add'
 import AboutDialog from 'components/About'
 import SettingsDialogButton from 'components/Settings'
+import HomelabDiskCacheButton from 'components/Homelab' // homelab
 
 import StyledPWAFooter from './style'
 
@@ -24,6 +25,9 @@ export default function PWAFooter({ setIsDonationDialogOpen, isOffline, isLoadin
       <AddDialogButton isOffline={isOffline} isLoading={isLoading} />
 
       <AboutDialog />
+
+      {/* homelab: persistent disk cache */}
+      <HomelabDiskCacheButton isOffline={isOffline} isLoading={isLoading} />
 
       <SettingsDialogButton isOffline={isOffline} isLoading={isLoading} />
     </StyledPWAFooter>

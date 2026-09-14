@@ -39,6 +39,8 @@ HOOKS=(
   "server/torr/apihelper.go:2"
   "server/web/api/route.go:1"
   "web/src/components/App/Sidebar.jsx:2"
+  "web/src/components/App/PWAFooter/index.jsx:2"
+  "web/src/components/App/PWAFooter/style.js:1"
 )
 
 check_hooks() {

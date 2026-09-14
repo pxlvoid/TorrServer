@@ -20,7 +20,7 @@ export default function HomelabDiskCacheButton({ isOffline, isLoading }) {
         {isStandaloneApp ? (
           <>
             <StorageIcon />
-            <div>{t('Homelab.DiskCache')}</div>
+            <div>{t('Homelab.DiskCacheShort')}</div>
           </>
         ) : (
           <>

@@ -82,7 +82,8 @@ function CacheItem({ item, busy, onPin, onRemove }) {
   ].filter(Boolean)
 
   return (
-    <ListItem divider>
+    // room for two icon buttons of ListItemSecondaryAction (MUI reserves only one)
+    <ListItem divider style={{ paddingRight: 112 }}>
       <ListItemAvatar>
         <Avatar variant='rounded' src={item.poster || undefined} alt=''>
           <MovieIcon />
@@ -90,7 +91,7 @@ function CacheItem({ item, busy, onPin, onRemove }) {
       </ListItemAvatar>
       <ListItemText
         primary={
-          <Box display='flex' alignItems='center' flexWrap='wrap' style={{ gap: 6, paddingRight: 96 }}>
+          <Box display='flex' alignItems='center' flexWrap='wrap' style={{ gap: 6 }}>
             <span style={{ wordBreak: 'break-word' }}>{title}</span>
             {item.playing ? (
               <Chip size='small' color='secondary' label={t('Homelab.Playing')} />

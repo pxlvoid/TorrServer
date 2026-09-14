@@ -5,6 +5,7 @@ import i18n from '../../i18n'
 const en = {
   Homelab: {
     DiskCache: 'Disk cache',
+    DiskCacheShort: 'Cache',
     Build: 'homelab build on {{upstream}}',
     NotReady: 'Disk cache is off. Enable “Use disk” and set the cache path in Settings, then turn this on.',
     Used: '{{used}} of {{limit}}',
@@ -36,6 +37,7 @@ const en = {
 const ru = {
   Homelab: {
     DiskCache: 'Кэш на диске',
+    DiskCacheShort: 'Кэш',
     Build: 'сборка homelab на {{upstream}}',
     NotReady: 'Кэш на диске выключен. Включите «Использовать диск» и укажите путь в Настройках, затем включите здесь.',
     Used: '{{used}} из {{limit}}',

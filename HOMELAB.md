@@ -64,6 +64,8 @@ force-push не нужен).
 | `server/torr/apihelper.go` | 2 | `RemTorrent` не удаляет постоянный кэш |
 | `server/web/api/route.go` | 1 | `homelabRoutes(authorized)` |
 | `web/src/components/App/Sidebar.jsx` | 2 | импорт и пункт меню «Кэш на диске» |
+| `web/src/components/App/PWAFooter/index.jsx` | 2 | импорт и кнопка «Кэш» в нижней панели приложения на телефоне (PWA) |
+| `web/src/components/App/PWAFooter/style.js` | 1 | сетка панели на 6 кнопок вместо 5 |
 
 Число крючков сверяет `scripts/homelab-sync.sh` (список `HOOKS`) — поменял крючки, поправь и его, и эту таблицу.
 Посмотреть всё наше: `git diff $(cat server/settings/homelab_upstream.txt) homelab`, крючки: `git grep -n homelab -- server/server.go server/torr web/src/components/App`.
