@@ -154,6 +154,7 @@ func (r *Reader) getOffsetRange() (int64, int64) {
 		beginOffset = 0
 	}
 
+	endOffset = hlReaderEnd(r.cache, r.file.Length(), endOffset) // homelab: background fill to the end of the file
 	if endOffset > r.file.Length() {
 		endOffset = r.file.Length()
 	}

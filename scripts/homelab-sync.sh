@@ -34,13 +34,17 @@ finish() { # status details
 # Крючки в файлах upstream: файл → сколько строк с пометкой homelab там должно быть.
 # Меняешь крючки — поправь и этот список, и таблицу в HOMELAB.md.
 HOOKS=(
-  "server/torr/storage/torrstor/cache.go:5"
+  "server/torr/storage/torrstor/cache.go:6"
+  "server/torr/storage/torrstor/reader.go:1"
   "server/server.go:1"
   "server/torr/apihelper.go:2"
   "server/web/api/route.go:1"
   "web/src/components/App/Sidebar.jsx:2"
   "web/src/components/App/PWAFooter/index.jsx:2"
   "web/src/components/App/PWAFooter/style.js:1"
+  "web/src/components/TorrentList/index.jsx:2"
+  "web/src/components/TorrentCard/index.jsx:2"
+  "web/src/components/DialogTorrentDetailsContent/index.jsx:2"
 )
 
 check_hooks() {

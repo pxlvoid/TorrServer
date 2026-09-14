@@ -42,6 +42,7 @@ import {
   shouldUseGStreamerPlayer,
   useGStreamerRuntime,
 } from 'utils/GStreamer'
+import HomelabCacheBadge from 'components/Homelab/CacheBadge' // homelab
 
 import {
   StatusIndicators,
@@ -377,6 +378,8 @@ const Torrent = ({ torrent }) => {
       <TorrentCard>
         <TorrentCardPoster isPoster={poster} onClick={handleClickOpenEditDialog}>
           {poster ? <img src={poster} alt='poster' /> : <NoImageIcon />}
+          {/* homelab: share on disk */}
+          <HomelabCacheBadge hash={hash} />
         </TorrentCardPoster>
 
         <TorrentCardButtons>

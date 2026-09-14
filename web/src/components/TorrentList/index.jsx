@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import TorrentCard from 'components/TorrentCard'
 import CircularProgress from '@material-ui/core/CircularProgress'
 import { TorrentListWrapper, CenteredGrid } from 'components/App/style'
+import HomelabCacheSummary from 'components/Homelab/CacheSummary' // homelab
 
 import NoServerConnection from './NoServerConnection'
 import AddFirstTorrent from './AddFirstTorrent'
@@ -40,6 +41,8 @@ export default function TorrentList({ isOffline, isLoading, sortABC, torrents, s
 
   return (
     <TorrentListWrapper>
+      {/* homelab: disk cache summary */}
+      <HomelabCacheSummary />
       {sortedTorrents.map(torrent => (
         <TorrentCard key={torrent.hash} torrent={torrent} />
       ))}

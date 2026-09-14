@@ -28,6 +28,7 @@ import (
 
 	"server/log"
 	"server/settings"
+	"server/torr/storage/state"
 )
 
 const (
@@ -212,6 +213,48 @@ func hlPieceImpl(c *Cache, p *Piece) storage.PieceImpl {
 		return h.pieces[p.Id]
 	}
 	return p
+}
+
+// hlReaderEnd — hook in Reader.getOffsetRange: with BackgroundFill the reader window reaches the end of the
+// file, so while the file is open (playing or paused) upstream priorities download it to the end — the
+// piece under the player first, the rest behind it, all into the disk cache. Otherwise the window is
+// CacheSize ahead and a paused player gets a couple of minutes of buffer.
+func hlReaderEnd(c *Cache, fileLength, end int64) int64 {
+	if hlGet(c) == nil || !hlEnabled() || !settings.GetHomelabSets().BackgroundFill {
+		return end
+	}
+	return fileLength
+}
+
+// hlAdjustState — hook at the end of Cache.GetState. In persistent mode the cache holds far more than
+// CacheSize, but Filled is read as "buffer around the player": preloaded_bytes of the torrent status
+// (Lampa shows it as preload progress) and the buffer bar of the web UI. So Filled counts only pieces in
+// active reader windows; what is on disk as a whole is shown by the homelab UI (HomelabList).
+// Also the last piece is reported with its real length, otherwise the UI never shows it as complete.
+func hlAdjustState(c *Cache, st *state.CacheState) {
+	h := hlGet(c)
+	if h == nil || st == nil {
+		return
+	}
+	ranges := make([]Range, 0)
+	for _, r := range c.readersSnapshot() {
+		if r.isUse {
+			ranges = append(ranges, r.getPiecesRange())
+		}
+	}
+	ranges = mergeRange(ranges)
+	var fill int64
+	for id, p := range st.Pieces {
+		if inRanges(ranges, id) {
+			fill += p.Size
+		}
+	}
+	st.Filled = fill
+	last := c.pieceCount - 1
+	if p, ok := st.Pieces[last]; ok {
+		p.Length = hlPieceLen(h.total, c.pieceLength, c.pieceCount, last)
+		st.Pieces[last] = p
+	}
 }
 
 // hlPiece wraps Piece for anacrolix: records hash check results and access times.

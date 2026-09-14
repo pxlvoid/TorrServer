@@ -8,6 +8,7 @@ import { viewedHost } from 'utils/Hosts'
 import { GETTING_INFO, IN_DB } from 'torrentStates'
 import CircularProgress from '@material-ui/core/CircularProgress'
 import { useTranslation } from 'react-i18next'
+import HomelabMiniCache from 'components/Homelab/MiniCache' // homelab
 
 import { useUpdateCache, useGetSettings } from './customHooks'
 import DialogHeader from './DialogHeader'
@@ -213,7 +214,10 @@ export default function DialogTorrentDetailsContent({ closeDialog, torrent }) {
                 />
               </SectionHeader>
 
-              <TorrentCache isMini cache={cache} isSnakeDebugMode={isSnakeDebugMode} />
+              {/* homelab: persistent cache — timeline of the torrent instead of the mini snake */}
+              <HomelabMiniCache cache={cache}>
+                <TorrentCache isMini cache={cache} isSnakeDebugMode={isSnakeDebugMode} />
+              </HomelabMiniCache>
               <Button
                 style={{ marginTop: '30px' }}
                 variant='contained'

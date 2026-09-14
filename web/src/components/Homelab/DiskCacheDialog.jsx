@@ -8,6 +8,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   IconButton,
   Switch,
   TextField,
@@ -29,6 +30,7 @@ import useOnStandaloneAppOutsideClick from 'utils/useOnStandaloneAppOutsideClick
 
 import UnsafeButton from '../UnsafeButton'
 import { parseTitle } from './parseTitle'
+import { publishHomelabCache } from './store'
 import {
   Actions,
   Bar,
@@ -150,6 +152,7 @@ export default function DiskCacheDialog({ handleClose }) {
   const apply = useCallback(
     resp => {
       setData(resp)
+      publishHomelabCache(resp) // summary and badges on the main screen follow the dialog
       setForm(prev => prev || resp.settings)
       if (resp.freed) setMessage(t('Homelab.Freed', { size: humanizeSize(resp.freed) }))
     },
@@ -184,6 +187,7 @@ export default function DiskCacheDialog({ handleClose }) {
         persistentCache: sets.persistentCache,
         limitGB: Math.max(0, parseInt(sets.limitGB, 10) || 0),
         keepDays: Math.max(0, parseInt(sets.keepDays, 10) || 0),
+        backgroundFill: !!sets.backgroundFill, // the API stores the whole struct: never omit a field
       })
       .then(({ data }) => {
         setForm(data)
@@ -202,12 +206,17 @@ export default function DiskCacheDialog({ handleClose }) {
   const dirty =
     form &&
     saved &&
-    (String(form.limitGB) !== String(saved.limitGB) || String(form.keepDays) !== String(saved.keepDays))
+    (String(form.limitGB) !== String(saved.limitGB) ||
+      String(form.keepDays) !== String(saved.keepDays) ||
+      !!form.backgroundFill !== !!saved.backgroundFill)
   const settingsSummary = saved
     ? [
         saved.limitGB ? t('Homelab.SummaryLimit', { limit: saved.limitGB }) : t('Homelab.SummaryNoLimit'),
         saved.keepDays ? t('Homelab.SummaryDays', { count: saved.keepDays }) : t('Homelab.SummaryForever'),
-      ].join(' · ')
+        saved.backgroundFill && t('Homelab.SummaryFill'),
+      ]
+        .filter(Boolean)
+        .join(' · ')
     : ''
 
   return (
@@ -271,6 +280,19 @@ export default function DiskCacheDialog({ handleClose }) {
                     <Typography variant='body2' color='textSecondary'>
                       {t('Homelab.PersistentHelp')}
                     </Typography>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          color='secondary'
+                          checked={!!form.backgroundFill}
+                          onChange={e => setForm({ ...form, backgroundFill: e.target.checked })}
+                        />
+                      }
+                      label={t('Homelab.BackgroundFill')}
+                    />
+                    <Typography variant='body2' color='textSecondary'>
+                      {t('Homelab.BackgroundFillHelp')}
+                    </Typography>
                     <div className='settings-fields'>
                       <TextField
                         type='number'
@@ -299,6 +321,14 @@ export default function DiskCacheDialog({ handleClose }) {
                         </Button>
                       </Box>
                     </div>
+                    <Box mt={2}>
+                      <Typography variant='body2'>{t('Homelab.SettingsNoteTitle')}</Typography>
+                      <ul style={{ margin: '4px 0 0', paddingInlineStart: 18, opacity: 0.8, fontSize: 13 }}>
+                        {t('Homelab.SettingsNote', { returnObjects: true }).map(line => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    </Box>
                   </SettingsForm>
                 )}
               </Section>

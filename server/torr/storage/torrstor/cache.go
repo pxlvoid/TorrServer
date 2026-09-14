@@ -230,6 +230,7 @@ func (c *Cache) GetState() *state.CacheState {
 	cState.Filled = fill
 	cState.Pieces = piecesState
 	cState.Readers = readersState
+	hlAdjustState(c, cState) // homelab: Filled = reader window, not the whole disk cache
 	return cState
 }
 

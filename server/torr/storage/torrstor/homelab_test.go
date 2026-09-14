@@ -14,6 +14,7 @@ import (
 	"github.com/anacrolix/torrent/storage"
 
 	"server/settings"
+	"server/torr/storage/state"
 )
 
 func hlTestSettings(t *testing.T, sets settings.HomelabSets) string {
@@ -144,6 +145,46 @@ func TestHomelabInitCompletionAndClose(t *testing.T) {
 	}
 	if hlByHashGet(hash.HexString()) != nil {
 		t.Fatal("closed cache still registered")
+	}
+}
+
+// Filled of a persistent cache is the reader window only (no readers — nothing), the last piece has its real length.
+func TestHomelabAdjustState(t *testing.T) {
+	hlTestSettings(t, settings.HomelabSets{PersistentCache: true})
+	hash := metainfo.NewHashFromHex("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")
+	info := &metainfo.Info{Name: "x", PieceLength: 16, Length: 16*2 + 5, Pieces: make([]byte, 3*20)}
+	impl, _ := NewStorage(64).OpenTorrent(info, hash)
+	c := impl.(*Cache)
+	defer c.Close()
+
+	st := &state.CacheState{Filled: 37, Pieces: map[int]state.ItemState{
+		0: {Id: 0, Size: 16, Length: 16}, 1: {Id: 1, Size: 16, Length: 16}, 2: {Id: 2, Size: 5, Length: 16},
+	}}
+	hlAdjustState(c, st)
+	if st.Filled != 0 {
+		t.Fatalf("no readers — Filled must be 0, got %d", st.Filled)
+	}
+	if st.Pieces[2].Length != 5 {
+		t.Fatalf("last piece length: %d", st.Pieces[2].Length)
+	}
+}
+
+func TestHomelabReaderEnd(t *testing.T) {
+	hlTestSettings(t, settings.HomelabSets{PersistentCache: true, BackgroundFill: true})
+	info := &metainfo.Info{Name: "x", PieceLength: 16, Length: 64, Pieces: make([]byte, 4*20)}
+	impl, _ := NewStorage(64).OpenTorrent(info, metainfo.NewHashFromHex("ffffffffffffffffffffffffffffffffffffffff"))
+	c := impl.(*Cache)
+	defer c.Close()
+
+	if got := hlReaderEnd(c, 1000, 100); got != 1000 {
+		t.Fatalf("background fill: window must reach the end of the file, got %d", got)
+	}
+	settings.SetHomelabSetsForTest(settings.HomelabSets{PersistentCache: true, BackgroundFill: false})
+	if got := hlReaderEnd(c, 1000, 100); got != 100 {
+		t.Fatalf("background fill off: upstream window, got %d", got)
+	}
+	if got := hlReaderEnd(&Cache{}, 1000, 100); got != 100 {
+		t.Fatalf("not a persistent cache: upstream window, got %d", got)
 	}
 }
 

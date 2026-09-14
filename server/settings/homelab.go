@@ -23,9 +23,13 @@ type HomelabSets struct {
 	LimitGB int64 `json:"limitGB"`
 	// Remove pieces not accessed for N days. 0 — never remove by age.
 	KeepDays int `json:"keepDays"`
+	// While a file is open (playing or paused), download it to the end instead of only the CacheSize
+	// window ahead of the player. Only in persistent mode: the rest lands in the disk cache.
+	BackgroundFill bool `json:"backgroundFill"`
 }
 
-var homelabDefaults = HomelabSets{PersistentCache: false, LimitGB: 100, KeepDays: 7}
+// fields missing in the stored JSON keep these values (BackgroundFill appeared later — stays on)
+var homelabDefaults = HomelabSets{PersistentCache: false, LimitGB: 100, KeepDays: 7, BackgroundFill: true}
 
 var (
 	homelabMu   sync.RWMutex
