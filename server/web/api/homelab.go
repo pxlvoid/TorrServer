@@ -6,6 +6,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -20,6 +21,7 @@ func homelabRoutes(authorized gin.IRouter) {
 	authorized.POST("/homelab/settings", homelabSetSettings)
 	authorized.POST("/homelab/download", homelabDownload)
 	authorized.POST("/homelab/audio", homelabAudio)
+	authorized.POST("/homelab/pieces", homelabPieces)
 	torrstor.HomelabStartJanitor()
 	torr.HomelabDownloadsStart()
 }
@@ -243,6 +245,23 @@ func homelabAudio(c *gin.Context) {
 		resp.Choice = &saved
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// homelabPieces — the disk map of a torrent for the timeline in the torrent details (torrstor.HomelabPieces).
+func homelabPieces(c *gin.Context) {
+	var req struct {
+		Hash string `json:"hash"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+	m, ok := torrstor.HomelabPieces(strings.ToLower(req.Hash))
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no cache for this torrent"})
+		return
+	}
+	c.JSON(http.StatusOK, m)
 }
 
 func homelabGetSettings(c *gin.Context) {

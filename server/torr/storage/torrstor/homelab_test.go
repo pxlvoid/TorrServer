@@ -164,8 +164,36 @@ func TestHomelabAdjustState(t *testing.T) {
 	if st.Filled != 0 {
 		t.Fatalf("no readers — Filled must be 0, got %d", st.Filled)
 	}
-	if st.Pieces[2].Length != 5 {
-		t.Fatalf("last piece length: %d", st.Pieces[2].Length)
+	// the state is polled ten times a second: no pieces outside the players' windows (the disk map is HomelabPieces)
+	if len(st.Pieces) != 0 {
+		t.Fatalf("no readers — no pieces in the state, got %d", len(st.Pieces))
+	}
+}
+
+// The disk map of a closed torrent: complete pieces by the verified mark and full size, partial by size.
+func TestHomelabPieceMap(t *testing.T) {
+	root := hlTestSettings(t, settings.HomelabSets{PersistentCache: true})
+	hash := "abababababababababababababababababababab"
+	dir := filepath.Join(root, hash)
+	now := time.Now()
+	hlWriteFile(t, filepath.Join(dir, "0"), 16, now) // complete, verified
+	hlWriteFile(t, filepath.Join(dir, "1"), 7, now)  // partial
+	hlWriteFile(t, filepath.Join(dir, "2"), 5, now)  // the short last piece, verified
+	if err := hlWriteMeta(dir, &hlMeta{Hash: hash, TotalLength: 37, PieceLength: 16, PieceCount: 3,
+		Verified: hlEncodeBits([]bool{true, false, true})}); err != nil {
+		t.Fatal(err)
+	}
+	m, ok := HomelabPieces(hash)
+	if !ok || m.PieceCount != 3 || m.Bytes != 28 || m.TotalLength != 37 {
+		t.Fatalf("map: %+v", m)
+	}
+	complete := hlDecodeBits(m.Complete, 3)
+	partial := hlDecodeBits(m.Partial, 3)
+	if !complete[0] || complete[1] || !complete[2] || partial[0] || !partial[1] || partial[2] {
+		t.Fatalf("complete %v partial %v", complete, partial)
+	}
+	if _, ok := HomelabPieces("cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"); ok {
+		t.Fatal("unknown torrent must not have a map")
 	}
 }
 

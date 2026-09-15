@@ -2,11 +2,14 @@
 // The upstream mini snake piles all cached pieces into one block — fine for a ring cache of CacheSize,
 // meaningless for a persistent cache of many gigabytes. In persistent mode it is replaced by a timeline
 // of the whole torrent: what is on disk, where the player is and its download window — and below it
-// "download to disk" of the whole torrent (DownloadPanel). The detailed
-// piece map (button below) stays upstream and is correct in both modes.
-import { useContext, useEffect, useRef, useState } from 'react'
+// "download to disk" of the whole torrent (DownloadPanel). What is on disk comes from /homelab/pieces (a compact
+// bitset every couple of seconds): the /cache state polled ten times a second carries only the pieces around the
+// players, so the detailed piece map (button below) shows the player window, as upstream.
+import axios from 'axios'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DarkModeContext } from 'components/App'
+import { getTorrServerHost } from 'utils/Hosts'
 import { humanizeSize } from 'utils/Utils'
 
 import './i18n'
@@ -21,17 +24,58 @@ const COLORS = {
   light: { track: '#dbf2e8', cached: '#4db380', window: '#afa6e3', reader: '#d32f2f' },
 }
 
+const MAP_REFRESH_MS = 2000
+
+// bit i of a base64 bitset (as hlEncodeBits writes it: byte i/8, bit i%8)
+function decodeBits(b64, count) {
+  const bits = new Uint8Array(count)
+  const raw = atob(b64 || '')
+  // eslint-disable-next-line no-bitwise -- a bitset from the server, bit operations are the point
+  for (let i = 0; i < count && i >> 3 < raw.length; i++) bits[i] = (raw.charCodeAt(i >> 3) >> (i & 7)) & 1
+  return bits
+}
+
+// the disk map of the torrent, refreshed every couple of seconds while the details are open
+function usePieceMap(hash) {
+  const [map, setMap] = useState(null)
+  useEffect(() => {
+    if (!hash) return undefined
+    let alive = true
+    const load = () =>
+      axios
+        .post(`${getTorrServerHost()}/homelab/pieces`, { hash })
+        .then(({ data }) => alive && setMap(data))
+        .catch(() => {})
+    load()
+    const id = setInterval(load, MAP_REFRESH_MS)
+    return () => {
+      alive = false
+      clearInterval(id)
+    }
+  }, [hash])
+  return map
+}
+
 function DiskTimeline({ cache, totalLength }) {
   const { t } = useTranslation()
   const { isDarkMode } = useContext(DarkModeContext)
   const colors = COLORS[isDarkMode ? 'dark' : 'light']
   const canvasRef = useRef(null)
   const [width, setWidth] = useState(0)
+  const map = usePieceMap(cache.Hash)
 
-  const { PiecesCount = 0, PiecesLength = 0, Pieces = {}, Readers = [] } = cache
-  const pieces = Object.values(Pieces || {})
-  const onDisk = pieces.reduce((sum, p) => sum + (p.Size || 0), 0)
-  const total = totalLength || PiecesCount * PiecesLength
+  const { PiecesCount = 0, PiecesLength = 0, Readers = [] } = cache
+  // share of each piece on disk: complete — 1, partly downloaded — a half
+  const shares = useMemo(() => {
+    const out = new Float32Array(PiecesCount)
+    if (!map || map.pieceCount !== PiecesCount) return out
+    const complete = decodeBits(map.complete, PiecesCount)
+    const partial = decodeBits(map.partial, PiecesCount)
+    for (let i = 0; i < PiecesCount; i++) out[i] = complete[i] ? 1 : partial[i] ? 0.5 : 0
+    return out
+  }, [map, PiecesCount])
+  const onDisk = map?.bytes || 0
+  const total = totalLength || map?.totalLength || PiecesCount * PiecesLength
   const percent = total ? Math.min(100, (onDisk / total) * 100) : 0
 
   useEffect(() => {
@@ -60,10 +104,7 @@ function DiskTimeline({ cache, totalLength }) {
     // cached pieces: a pixel column covers a whole number of pieces and is shaded by the share of them on
     // disk (prefix sums), so a fully cached stretch is solid, without stripes from uneven pieces per pixel
     const prefix = new Float64Array(PiecesCount + 1)
-    pieces.forEach(p => {
-      if (p.Size && p.Length && p.Id < PiecesCount) prefix[p.Id + 1] = Math.min(1, p.Size / p.Length)
-    })
-    for (let i = 0; i < PiecesCount; i++) prefix[i + 1] += prefix[i]
+    for (let i = 0; i < PiecesCount; i++) prefix[i + 1] = prefix[i] + shares[i]
     const bins = Math.min(w, PiecesCount)
     ctx.fillStyle = colors.cached
     for (let i = 0; i < bins; i++) {
@@ -78,14 +119,14 @@ function DiskTimeline({ cache, totalLength }) {
     }
     ctx.globalAlpha = 1
 
-    // player: download window as a strip at the bottom, position as a line
+    // player: its buffer (the upstream window, as the state reports it) as a strip at the bottom, position as a line
     Readers.forEach(r => {
       ctx.fillStyle = colors.window
       ctx.fillRect(x(r.Start), h - 6 * dpr, Math.max(2 * dpr, x(r.End) - x(r.Start)), 6 * dpr)
       ctx.fillStyle = colors.reader
       ctx.fillRect(x(r.Reader) - dpr, 0, 2 * dpr, h)
     })
-  }, [width, PiecesCount, pieces, Readers, colors])
+  }, [width, PiecesCount, shares, Readers, colors])
 
   return (
     <Timeline>

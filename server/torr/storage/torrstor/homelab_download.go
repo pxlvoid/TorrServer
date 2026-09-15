@@ -78,39 +78,80 @@ func HomelabDiskFree() (free int64, ok bool) {
 // HomelabMinFree — what the janitor always keeps free on the cache disk.
 const HomelabMinFree = hlMinFree
 
-// HomelabComplete — which pieces of the torrent are complete in the disk cache, nil if nothing is known.
-// Loaded torrents answer from memory; closed ones from the verified mark and the piece file sizes.
-func HomelabComplete(hash string) []bool {
+// hlPieceStates — the pieces of a torrent in the disk cache: complete ones and bytes of each; ok=false if nothing
+// is known. Loaded torrents answer from memory; closed ones from the verified mark and the piece file sizes.
+func hlPieceStates(hash string) (complete []bool, size []int64, pieceLength, total int64, ok bool) {
 	if !hlIsHash(hash) {
-		return nil
+		return nil, nil, 0, 0, false
 	}
 	c := hlUpstreamOpen(hash)
-	if h := hlByHashGet(hash); h != nil {
+	h := hlByHashGet(hash)
+	if h != nil {
 		c = h.c
 	}
 	if c != nil {
-		out := make([]bool, c.pieceCount)
+		complete, size = make([]bool, c.pieceCount), make([]int64, c.pieceCount)
 		for id, p := range c.getPieces() {
-			if id >= 0 && id < len(out) {
-				out[id] = p.Complete
+			if id >= 0 && id < c.pieceCount {
+				complete[id], size[id] = p.Complete, p.Size
 			}
 		}
-		return out
+		total = c.pieceLength * int64(c.pieceCount)
+		if h != nil {
+			total = h.total
+		}
+		return complete, size, c.pieceLength, total, true
 	}
 
 	dir := filepath.Join(hlRoot(), hash)
 	meta, _ := hlReadMeta(dir)
 	if meta == nil || meta.PieceCount <= 0 || meta.PieceLength <= 0 {
-		return nil
+		return nil, nil, 0, 0, false
 	}
 	verified := hlDecodeBits(meta.Verified, meta.PieceCount)
-	out := make([]bool, meta.PieceCount)
+	complete, size = make([]bool, meta.PieceCount), make([]int64, meta.PieceCount)
 	for _, f := range hlPieceFiles(dir) {
 		id, err := strconv.Atoi(filepath.Base(f.path))
 		if err != nil || id < 0 || id >= meta.PieceCount {
 			continue
 		}
-		out[id] = verified[id] && f.size == hlPieceLen(meta.TotalLength, meta.PieceLength, meta.PieceCount, id)
+		want := hlPieceLen(meta.TotalLength, meta.PieceLength, meta.PieceCount, id)
+		size[id] = min(f.size, want)
+		complete[id] = verified[id] && f.size == want
 	}
-	return out
+	return complete, size, meta.PieceLength, meta.TotalLength, true
+}
+
+// HomelabComplete — which pieces of the torrent are complete in the disk cache, nil if nothing is known.
+func HomelabComplete(hash string) []bool {
+	complete, _, _, _, _ := hlPieceStates(hash)
+	return complete
+}
+
+// HomelabPieceMap — what of a torrent is in the disk cache, compact: bitsets (base64, bit i — piece i) of complete
+// and of partly downloaded pieces. For the disk timeline in the torrent details: the /cache state no longer carries
+// every piece on disk (hlAdjustState).
+type HomelabPieceMap struct {
+	PieceCount  int    `json:"pieceCount"`
+	PieceLength int64  `json:"pieceLength"`
+	TotalLength int64  `json:"totalLength"`
+	Bytes       int64  `json:"bytes"` // on disk
+	Complete    string `json:"complete"`
+	Partial     string `json:"partial"`
+}
+
+// HomelabPieces — the disk map of a torrent; ok=false if nothing is known.
+func HomelabPieces(hash string) (HomelabPieceMap, bool) {
+	complete, size, pieceLength, total, ok := hlPieceStates(hash)
+	if !ok {
+		return HomelabPieceMap{}, false
+	}
+	partial := make([]bool, len(size))
+	m := HomelabPieceMap{PieceCount: len(size), PieceLength: pieceLength, TotalLength: total}
+	for i, n := range size {
+		m.Bytes += n
+		partial[i] = n > 0 && !complete[i]
+	}
+	m.Complete, m.Partial = hlEncodeBits(complete), hlEncodeBits(partial)
+	return m, true
 }

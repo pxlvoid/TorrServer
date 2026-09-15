@@ -226,35 +226,64 @@ func hlReaderEnd(c *Cache, fileLength, end int64) int64 {
 	return fileLength
 }
 
-// hlAdjustState — hook at the end of Cache.GetState. In persistent mode the cache holds far more than
-// CacheSize, but Filled is read as "buffer around the player": preloaded_bytes of the torrent status
-// (Lampa shows it as preload progress) and the buffer bar of the web UI. So Filled counts only pieces in
-// active reader windows; what is on disk as a whole is shown by the homelab UI (HomelabList).
+// hlAdjustState — hook at the end of Cache.GetState. Outside the state is what upstream reports: the window of
+// CacheSize around each player. Background fill (the window to the end of the file) and downloads are internal:
+//   - Readers: the upstream window of each reader, download readers left out. Lampa draws its buffer dots from
+//     Readers[0] (Reader → End) and the Completed pieces in a row after it; with End at the file end the dots
+//     were red until the whole file was on disk, and a download reader could be taken for the player;
+//   - Filled (preloaded_bytes of the torrent — Lampa's preload progress, the buffer bar of the web UI): what is
+//     on disk in those windows, not the whole disk cache — otherwise preload is "ready" at once;
+//   - Pieces: only those windows. The web UI polls /cache ten times a second, and every piece on disk made it
+//     hundreds of KB (a whole cached film) — the torrent details choked on it. What is on disk as a whole is
+//     shown by the homelab UI (HomelabList, HomelabPieces).
+//
 // Also the last piece is reported with its real length, otherwise the UI never shows it as complete.
 func hlAdjustState(c *Cache, st *state.CacheState) {
 	h := hlGet(c)
 	if h == nil || st == nil {
 		return
 	}
-	ranges := make([]Range, 0)
+	window := make([]Range, 0)
+	readers := make([]*state.ReaderState, 0, len(st.Readers))
 	for _, r := range c.readersSnapshot() {
-		if r.isUse && !hlIsDownloadReader(r) { // a download's window reaches the file end: not a player buffer
-			ranges = append(ranges, r.getPiecesRange())
+		if hlIsDownloadReader(r) {
+			continue
+		}
+		rng := r.hlUpstreamRange()
+		readers = append(readers, &state.ReaderState{Start: rng.Start, End: rng.End, Reader: r.getReaderPiece()})
+		if r.isUse {
+			window = append(window, rng)
 		}
 	}
-	ranges = mergeRange(ranges)
-	var fill int64
-	for id, p := range st.Pieces {
-		if inRanges(ranges, id) {
-			fill += p.Size
-		}
-	}
-	st.Filled = fill
+	st.Readers = readers
+	window = mergeRange(window)
 	last := c.pieceCount - 1
 	if p, ok := st.Pieces[last]; ok {
 		p.Length = hlPieceLen(h.total, c.pieceLength, c.pieceCount, last)
 		st.Pieces[last] = p
 	}
+	var fill int64
+	for id, p := range st.Pieces {
+		if inRanges(window, id) {
+			fill += p.Size
+		} else {
+			delete(st.Pieces, id)
+		}
+	}
+	st.Filled = fill
+}
+
+// hlUpstreamRange — the reader window as upstream computes it (getOffsetRange without background fill):
+// CacheSize around the reader.
+func (r *Reader) hlUpstreamRange() Range {
+	prc := int64(settings.BTsets.ReaderReadAHead)
+	readers := int64(r.getUseReaders())
+	if readers == 0 {
+		readers = 1
+	}
+	begin := max(r.offset-(r.cache.capacity/readers)*(100-prc)/100, 0)
+	end := min(r.offset+(r.cache.capacity/readers)*prc/100, r.file.Length())
+	return Range{r.getPieceNum(begin), r.getPieceNum(end), r.file}
 }
 
 // hlPiece wraps Piece for anacrolix: records hash check results and access times.

@@ -59,9 +59,15 @@
   диалог) и бейдж на постере каждой карточки — какая доля торрента на диске, ★ если закреплён. Все они берут
   данные из одного общего опроса `/homelab/cache` раз в 10 с (`web/src/components/Homelab/store.js`).
 - Окно торрента: вместо мини-«змейки» (она сваливает все закэшированные куски в одну кучу) — полоса всего
-  торрента: что на диске, где плеер и его окно загрузки. Подробная карта кусков — как в upstream.
+  торрента: что на диске, где плеер и его буфер. Подробная карта кусков — как в upstream.
 - `Filled` в состоянии кэша (и `preloaded_bytes` торрента, по нему Лампа показывает предзагрузку) считает только
   окно вокруг плеера, как задумано в upstream, а не весь дисковый кэш — иначе предзагрузка «готова» сразу.
+- Наружу состояние кэша (`/cache`, heartbeat GStreamer) — как в upstream: окно `CacheSize` вокруг плеера, фоновая
+  докачка и загрузки — внутренняя кухня. `Readers` — окно upstream (без читателей загрузки): Лампа рисует свой
+  индикатор буфера из `Readers[0]` и готовых кусков подряд после него. `Pieces` — только эти окна: веб опрашивает
+  `/cache` 10 раз в секунду, и с каждым куском на диске ответ разрастался до сотен КБ (закэшированный фильм) —
+  окно торрента на телефоне висело на загрузке. Что на диске целиком, полоса в окне торрента берёт из `POST /homelab/pieces`
+  (`{"hash":"…"}` → битовые карты готовых и начатых кусков, раз в 2 с); подробная карта кусков показывает окно плеера.
 
 Режим выключен — поведение в точности как в upstream (это проверяет тест).
 
@@ -103,7 +109,7 @@ force-push не нужен).
 
 | Файл | Крючков | Что делает |
 |---|---|---|
-| `server/torr/storage/torrstor/cache.go` | 6 | `Init` → `hlOnInit`; `Piece` → `hlPieceImpl`; `Close` → `hlOnClose` и `&& !hlKeep` у `RemoveCacheOnDrop`; `cleanPieces` → `hlOwnsEviction`; `GetState` → `hlAdjustState` (Filled = окно плеера) |
+| `server/torr/storage/torrstor/cache.go` | 6 | `Init` → `hlOnInit`; `Piece` → `hlPieceImpl`; `Close` → `hlOnClose` и `&& !hlKeep` у `RemoveCacheOnDrop`; `cleanPieces` → `hlOwnsEviction`; `GetState` → `hlAdjustState` (Readers, Filled и Pieces — окно upstream вокруг плеера) |
 | `server/torr/storage/torrstor/reader.go` | 1 | `getOffsetRange` → `hlReaderEnd`: с фоновой докачкой окно читателя — до конца файла |
 | `server/server.go` | 1 | `cleanCache` при старте не трогает постоянный кэш |
 | `server/torr/apihelper.go` | 2 | `RemTorrent` не удаляет постоянный кэш |
