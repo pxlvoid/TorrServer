@@ -9,6 +9,7 @@ import { GETTING_INFO, IN_DB } from 'torrentStates'
 import CircularProgress from '@material-ui/core/CircularProgress'
 import { useTranslation } from 'react-i18next'
 import HomelabMiniCache from 'components/Homelab/MiniCache' // homelab
+import HomelabAudioSelect from 'components/Homelab/AudioSelect' // homelab
 
 import { useUpdateCache, useGetSettings } from './customHooks'
 import DialogHeader from './DialogHeader'
@@ -199,6 +200,8 @@ export default function DialogTorrentDetailsContent({ closeDialog, torrent }) {
                   title={title}
                   setViewedFileList={setViewedFileList}
                 />
+                {/* homelab: the audio track served to players */}
+                <HomelabAudioSelect hash={hash} />
               </div>
             </MainSection>
 

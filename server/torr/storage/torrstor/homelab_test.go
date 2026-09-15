@@ -283,3 +283,26 @@ func TestHomelabRemoveAndPin(t *testing.T) {
 		t.Fatalf("path traversal must be rejected: %v", err)
 	}
 }
+
+// A download holds a reader too, but it is not someone watching: not "playing", no player buffer.
+func TestHomelabDownloadReaderIsNotPlayer(t *testing.T) {
+	hlTestSettings(t, settings.HomelabSets{PersistentCache: true})
+	c := &Cache{readers: map[*Reader]struct{}{}}
+	dl := &Reader{isUse: true}
+	c.readers[dl] = struct{}{}
+	HomelabMarkDownloadReader(dl)
+	defer HomelabUnmarkDownloadReader(dl)
+
+	if n := hlPlayers(c); n != 0 {
+		t.Fatalf("only a download reader — nobody plays, got %d", n)
+	}
+	player := &Reader{isUse: true}
+	c.readers[player] = struct{}{}
+	if n := hlPlayers(c); n != 1 {
+		t.Fatalf("download + player — one player, got %d", n)
+	}
+	HomelabUnmarkDownloadReader(dl)
+	if n := hlPlayers(c); n != 2 {
+		t.Fatalf("unmarked — two players, got %d", n)
+	}
+}

@@ -102,7 +102,7 @@ func HomelabList() ([]HomelabItem, HomelabUsage) {
 			it.LastAccess, it.Pinned = h.meta.LastAccess, h.meta.Pinned
 			h.mu.Unlock()
 			it.Open = true
-			it.Playing = h.c.GetUseReaders() > 0
+			it.Playing = hlPlayers(h.c) > 0
 		} else {
 			dir := filepath.Join(u.Path, it.Hash)
 			for _, f := range hlPieceFiles(dir) {
@@ -120,7 +120,7 @@ func HomelabList() ([]HomelabItem, HomelabUsage) {
 			}
 			if c := hlUpstreamOpen(it.Hash); c != nil {
 				it.Open = true
-				it.Playing = c.GetUseReaders() > 0
+				it.Playing = hlPlayers(c) > 0
 			}
 		}
 		u.Used += it.Size

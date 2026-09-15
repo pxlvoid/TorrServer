@@ -238,7 +238,7 @@ func hlAdjustState(c *Cache, st *state.CacheState) {
 	}
 	ranges := make([]Range, 0)
 	for _, r := range c.readersSnapshot() {
-		if r.isUse {
+		if r.isUse && !hlIsDownloadReader(r) { // a download's window reaches the file end: not a player buffer
 			ranges = append(ranges, r.getPiecesRange())
 		}
 	}

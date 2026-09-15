@@ -38,13 +38,15 @@ HOOKS=(
   "server/torr/storage/torrstor/reader.go:1"
   "server/server.go:1"
   "server/torr/apihelper.go:2"
+  "server/torr/stream.go:1"
   "server/web/api/route.go:1"
   "web/src/components/App/Sidebar.jsx:2"
   "web/src/components/App/PWAFooter/index.jsx:2"
   "web/src/components/App/PWAFooter/style.js:1"
   "web/src/components/TorrentList/index.jsx:2"
   "web/src/components/TorrentCard/index.jsx:2"
-  "web/src/components/DialogTorrentDetailsContent/index.jsx:2"
+  "web/src/components/DialogTorrentDetailsContent/index.jsx:4"
+  "web/src/components/DialogTorrentDetailsContent/Table/index.jsx:7"
 )
 
 check_hooks() {
@@ -61,7 +63,7 @@ check_hooks() {
 run_checks() {
   local log
   log=$(check_hooks) || { echo "$log"; return 1; }
-  log=$(cd server && go vet ./torr/storage/torrstor/ ./web/api/ 2>&1 && go test -count=1 ./torr/storage/torrstor/ ./settings/ 2>&1 && go build ./... 2>&1) \
+  log=$(cd server && go vet ./torr/storage/torrstor/ ./torr/ ./web/api/ 2>&1 && go test -count=1 ./torr/storage/torrstor/ ./settings/ 2>&1 && go test -count=1 -run Homelab ./torr/ 2>&1 && go build ./... 2>&1) \
     || { echo "$log" | tail -40; return 1; }
   if [ "$WEB" = 1 ]; then
     # react-scripts 4 на node ≥ 17 падает на md4 в webpack без legacy provider

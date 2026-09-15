@@ -49,8 +49,3 @@ export function useHomelabCache() {
 
   return data
 }
-
-export function useHomelabItem(hash) {
-  const data = useHomelabCache()
-  return data?.items?.find(item => item.hash === hash) || null
-}

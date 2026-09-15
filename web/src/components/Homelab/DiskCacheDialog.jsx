@@ -1,4 +1,4 @@
-// homelab: what the persistent disk cache holds — usage, settings, per-torrent pin / remove.
+// homelab: what the persistent disk cache holds — usage, settings, per-torrent pin / download / remove.
 // Accent is "secondary": in the dark theme TorrServer's primary (#323637) is the dialog background.
 import axios from 'axios'
 import {
@@ -18,17 +18,20 @@ import {
   useTheme,
 } from '@material-ui/core'
 import DeleteIcon from '@material-ui/icons/Delete'
+import GetAppIcon from '@material-ui/icons/GetApp'
 import MovieIcon from '@material-ui/icons/Movie'
+import StopIcon from '@material-ui/icons/Stop'
 import StarIcon from '@material-ui/icons/Star'
 import StarBorderIcon from '@material-ui/icons/StarBorder'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { StyledDialog } from 'style/CustomMaterialUiStyles'
 import { getTorrServerHost } from 'utils/Hosts'
-import { humanizeSize } from 'utils/Utils'
+import { humanizeSize, humanizeSpeed } from 'utils/Utils'
 import useOnStandaloneAppOutsideClick from 'utils/useOnStandaloneAppOutsideClick'
 
 import UnsafeButton from '../UnsafeButton'
+import { downloadErrorText, homelabDownloadAction } from './downloads'
 import { parseTitle } from './parseTitle'
 import { publishHomelabCache } from './store'
 import {
@@ -48,6 +51,7 @@ import {
 const cacheHost = () => `${getTorrServerHost()}/homelab/cache`
 const settingsHost = () => `${getTorrServerHost()}/homelab/settings`
 const REFRESH_MS = 5000
+const CONFIRM_MS = 5000
 
 const errorText = err => err?.response?.data?.error || err?.message || String(err)
 
@@ -78,14 +82,28 @@ function useRelativeTime() {
   )
 }
 
-function CacheCard({ item, busy, dark, onPin, onRemove }) {
+function downloadLine(t, download) {
+  if (!download) return null
+  if (download.state === 'error') return downloadErrorText(t, download)
+  if (download.state === 'queued') return t('Homelab.DownloadQueued')
+  return [t('Homelab.Downloading'), download.speed > 0 && humanizeSpeed(download.speed)].filter(Boolean).join(' · ')
+}
+
+function CacheCard({ item, download, confirming, busy, dark, onPin, onRemove, onDownload, onStop }) {
   const { t } = useTranslation()
   const relativeTime = useRelativeTime()
   const [posterFailed, setPosterFailed] = useState(false)
   const fullName = item.title || item.name || item.hash
   const { title, subtitle } = parseTitle(fullName)
   const percent = item.totalLength ? (item.size / item.totalLength) * 100 : null
+  const complete = !!item.totalLength && item.size >= item.totalLength
+  const badge = item.playing
+    ? t('Homelab.PlayingShort')
+    : download?.state === 'active'
+    ? t('Homelab.DownloadingShort')
+    : ''
   const stats = [
+    item.episodes > 1 && t('Homelab.CardEpisodes', { done: item.episodesDone, count: item.episodes }),
     item.totalLength
       ? t('Homelab.SizeOf', { size: humanizeSize(item.size), total: humanizeSize(item.totalLength) })
       : humanizeSize(item.size),
@@ -100,9 +118,9 @@ function CacheCard({ item, busy, dark, onPin, onRemove }) {
         ) : (
           <MovieIcon />
         )}
-        {item.playing && (
-          <PlayingBadge dark={dark} title={t('Homelab.Playing')}>
-            {t('Homelab.PlayingShort')}
+        {badge && (
+          <PlayingBadge dark={dark} title={item.playing ? t('Homelab.Playing') : t('Homelab.Downloading')}>
+            {badge}
           </PlayingBadge>
         )}
       </Poster>
@@ -113,6 +131,11 @@ function CacheCard({ item, busy, dark, onPin, onRemove }) {
         <div className='card-stats'>
           {percent !== null && <Bar thin dark={dark} value={percent} style={{ marginBottom: 6 }} />}
           {stats.join(' · ')}
+          {download && (
+            <div className={download.state === 'error' ? 'card-download card-download-error' : 'card-download'}>
+              ↓ {downloadLine(t, download)}
+            </div>
+          )}
         </div>
       </Info>
 
@@ -124,9 +147,32 @@ function CacheCard({ item, busy, dark, onPin, onRemove }) {
             </IconButton>
           </span>
         </Tooltip>
-        <Tooltip title={item.playing ? t('Homelab.RemovePlaying') : t('Homelab.Remove')}>
+        {download ? (
+          <Tooltip title={t('Homelab.DownloadStop')}>
+            <span>
+              <IconButton disabled={busy} onClick={() => onStop(item)}>
+                <StopIcon />
+              </IconButton>
+            </span>
+          </Tooltip>
+        ) : (
+          !complete && (
+            <Tooltip title={t('Homelab.DownloadAllHelp')}>
+              <span>
+                <IconButton disabled={busy} onClick={() => onDownload(item)}>
+                  <GetAppIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+          )
+        )}
+        <Tooltip
+          title={
+            confirming ? t('Homelab.RemoveConfirm') : item.playing ? t('Homelab.RemovePlaying') : t('Homelab.Remove')
+          }
+        >
           <span>
-            <IconButton disabled={busy} onClick={() => onRemove(item)}>
+            <IconButton disabled={busy} color={confirming ? 'secondary' : 'default'} onClick={() => onRemove(item)}>
               <DeleteIcon />
             </IconButton>
           </span>
@@ -148,6 +194,13 @@ export default function DiskCacheDialog({ handleClose }) {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [confirmHash, setConfirmHash] = useState('') // playing torrent: the second click removes
+
+  useEffect(() => {
+    if (!confirmHash) return undefined
+    const id = setTimeout(() => setConfirmHash(''), CONFIRM_MS)
+    return () => clearTimeout(id)
+  }, [confirmHash])
 
   const apply = useCallback(
     resp => {
@@ -180,6 +233,27 @@ export default function DiskCacheDialog({ handleClose }) {
     return () => clearInterval(id)
   }, [call])
 
+  const removeItem = item => {
+    if (item.playing && confirmHash !== item.hash) {
+      setConfirmHash(item.hash)
+      setMessage(t('Homelab.RemoveConfirm'))
+      return
+    }
+    setConfirmHash('')
+    call({ action: 'remove', hash: item.hash })
+  }
+
+  const downloadItem = (item, action) => {
+    setBusy(true)
+    homelabDownloadAction(item.hash, action)
+      .then(res => {
+        setError(res?.startError ? downloadErrorText(t, res.startError) : '')
+        if (!res?.startError) setMessage(action === 'start' ? t('Homelab.DownloadStarted') : '')
+        return call({ action: 'list' }, false)
+      })
+      .finally(() => setBusy(false))
+  }
+
   const saveSettings = sets => {
     setBusy(true)
     axios
@@ -203,6 +277,7 @@ export default function DiskCacheDialog({ handleClose }) {
   const usage = data?.usage
   const saved = data?.settings
   const items = data?.items || []
+  const downloads = data?.downloads || []
   const dirty =
     form &&
     saved &&
@@ -352,10 +427,14 @@ export default function DiskCacheDialog({ handleClose }) {
                   <CacheCard
                     key={item.hash}
                     item={item}
+                    download={downloads.find(d => d.hash === item.hash)}
+                    confirming={confirmHash === item.hash}
                     busy={busy}
                     dark={dark}
                     onPin={it => call({ action: 'pin', hash: it.hash, pinned: !it.pinned })}
-                    onRemove={it => call({ action: 'remove', hash: it.hash })}
+                    onRemove={removeItem}
+                    onDownload={it => downloadItem(it, 'start')}
+                    onStop={it => downloadItem(it, 'stop')}
                   />
                 ))}
               </CardList>

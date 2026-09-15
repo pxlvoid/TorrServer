@@ -1,7 +1,8 @@
 // homelab: cache block of the torrent details (hook in DialogTorrentDetailsContent).
 // The upstream mini snake piles all cached pieces into one block — fine for a ring cache of CacheSize,
 // meaningless for a persistent cache of many gigabytes. In persistent mode it is replaced by a timeline
-// of the whole torrent: what is on disk, where the player is and its download window. The detailed
+// of the whole torrent: what is on disk, where the player is and its download window — and below it
+// "download to disk" of the whole torrent (DownloadPanel). The detailed
 // piece map (button below) stays upstream and is correct in both modes.
 import { useContext, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -9,6 +10,7 @@ import { DarkModeContext } from 'components/App'
 import { humanizeSize } from 'utils/Utils'
 
 import './i18n'
+import HomelabDownloadPanel from './DownloadPanel'
 import { useHomelabCache } from './store'
 import { Timeline } from './style'
 
@@ -114,7 +116,14 @@ function DiskTimeline({ cache, totalLength }) {
 
 export default function HomelabMiniCache({ cache, children }) {
   const data = useHomelabCache()
+  const { isDarkMode } = useContext(DarkModeContext)
   if (!data?.usage?.enabled || !cache?.PiecesCount) return children
   const item = data.items?.find(it => it.hash === cache.Hash)
-  return <DiskTimeline cache={cache} totalLength={item?.totalLength} />
+  // one element: CacheSection is a three-row grid (header, this, button) — a fragment would add a row
+  return (
+    <div>
+      <DiskTimeline cache={cache} totalLength={item?.totalLength} />
+      <HomelabDownloadPanel hash={cache.Hash} dark={isDarkMode} />
+    </div>
+  )
 }

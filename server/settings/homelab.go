@@ -110,9 +110,129 @@ func HomelabPersistentCache() bool {
 	return b != nil && b.UseDisk && b.TorrentsSavePath != "" && GetHomelabSets().PersistentCache
 }
 
+// HomelabDownloadJob — a queued "download to disk" (torr/homelab_download.go), stored so the queue survives a restart.
+type HomelabDownloadJob struct {
+	Hash      string `json:"hash"`
+	Files     []int  `json:"files,omitempty"` // file ids as in file_stats; empty — the whole torrent
+	Added     int64  `json:"added"`
+	WasPinned bool   `json:"wasPinned,omitempty"` // pinned before the job: a stopped job leaves the pin as it was
+}
+
+// stored as an object: JsonDB (StoreSettingsInJson) keeps only objects under a key, not arrays
+type homelabDownloads struct {
+	Jobs []HomelabDownloadJob `json:"jobs"`
+}
+
+// GetHomelabDownloads — the stored download queue.
+func GetHomelabDownloads() []HomelabDownloadJob {
+	var stored homelabDownloads
+	if tdb == nil {
+		return nil
+	}
+	if buf := tdb.Get("Settings", "HomelabDownloads"); len(buf) > 0 {
+		if err := json.Unmarshal(buf, &stored); err != nil {
+			log.TLogln("Error unmarshal homelab downloads:", err)
+			return nil
+		}
+	}
+	return stored.Jobs
+}
+
+// SetHomelabDownloads stores the download queue.
+func SetHomelabDownloads(jobs []HomelabDownloadJob) {
+	if ReadOnly || tdb == nil {
+		return
+	}
+	if jobs == nil {
+		jobs = []HomelabDownloadJob{}
+	}
+	if buf, err := json.Marshal(homelabDownloads{Jobs: jobs}); err == nil {
+		tdb.Set("Settings", "HomelabDownloads", buf)
+	}
+}
+
 // SetHomelabSetsForTest replaces the settings without the DB (tests only).
 func SetHomelabSetsForTest(sets HomelabSets) {
 	homelabMu.Lock()
 	defer homelabMu.Unlock()
 	homelabSets = &sets
+}
+
+// HomelabAudioChoice — the audio track served to players for a torrent (torr/homelab_audio.go): the others are
+// hidden in the stream. A series may have different dubs in different episodes, so it is a list in order of
+// preference: an episode gets the first of them it has; with none of them — a track in the language of the first.
+// An episode may have its own track (Files, by the file path in the torrent): it wins over the list.
+type HomelabAudioChoice struct {
+	Tracks []HomelabAudioPref          `json:"tracks"`
+	Files  map[string]HomelabAudioPref `json:"files,omitempty"`
+}
+
+// HomelabAudioPref — a track as the user chose it: matched by name, language breaks ties. Index — the position
+// among the audio tracks of the file, used for a track chosen for one episode.
+type HomelabAudioPref struct {
+	Name  string `json:"name"`
+	Lang  string `json:"lang"`
+	Index int    `json:"index,omitempty"`
+}
+
+type homelabAudio struct {
+	Torrents map[string]HomelabAudioChoice `json:"torrents"`
+}
+
+var (
+	homelabAudioMu     sync.Mutex
+	homelabAudioCached *homelabAudio
+)
+
+func homelabAudioLoadLocked() *homelabAudio {
+	if homelabAudioCached != nil {
+		return homelabAudioCached
+	}
+	stored := &homelabAudio{}
+	if tdb != nil {
+		if buf := tdb.Get("Settings", "HomelabAudio"); len(buf) > 0 {
+			if err := json.Unmarshal(buf, stored); err != nil {
+				log.TLogln("Error unmarshal homelab audio:", err)
+			}
+		}
+		homelabAudioCached = stored // cache only once the DB is available
+	}
+	if stored.Torrents == nil {
+		stored.Torrents = map[string]HomelabAudioChoice{}
+	}
+	return stored
+}
+
+// GetHomelabAudio — the chosen audio track of a torrent; ok=false — all tracks, as in the file.
+func GetHomelabAudio(hash string) (HomelabAudioChoice, bool) {
+	homelabAudioMu.Lock()
+	defer homelabAudioMu.Unlock()
+	choice, ok := homelabAudioLoadLocked().Torrents[strings.ToLower(hash)]
+	return choice, ok
+}
+
+// SetHomelabAudio stores the choice; nil or no tracks — serve all tracks again.
+func SetHomelabAudio(hash string, choice *HomelabAudioChoice) error {
+	if ReadOnly {
+		return errors.New("read-only mode")
+	}
+	if choice != nil && len(choice.Tracks) == 0 && len(choice.Files) == 0 {
+		choice = nil
+	}
+	homelabAudioMu.Lock()
+	defer homelabAudioMu.Unlock()
+	stored := homelabAudioLoadLocked()
+	if choice == nil {
+		delete(stored.Torrents, strings.ToLower(hash))
+	} else {
+		stored.Torrents[strings.ToLower(hash)] = *choice
+	}
+	buf, err := json.Marshal(stored)
+	if err != nil {
+		return err
+	}
+	if tdb != nil {
+		tdb.Set("Settings", "HomelabAudio", buf)
+	}
+	return nil
 }

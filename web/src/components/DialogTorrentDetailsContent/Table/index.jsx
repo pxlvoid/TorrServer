@@ -11,6 +11,8 @@ import {
   shouldUseGStreamerPlayer,
   useGStreamerRuntime,
 } from 'utils/GStreamer'
+import HomelabDownloadButton from 'components/Homelab/DownloadButton' // homelab
+import { HomelabAudioShort, HomelabAudioTd, HomelabAudioTh } from 'components/Homelab/AudioCell' // homelab
 
 import VideoPlayer from '../../VideoPlayer'
 import { TableStyle, ShortTableWrapper, ShortTable } from './style'
@@ -79,6 +81,7 @@ const Table = memo(
               {fileHasEpisodeText && <th style={{ width: '0' }}>{t('Episode')}</th>}
               {fileHasResolutionText && <th style={{ width: '0' }}>{t('Resolution')}</th>}
               <th style={{ width: '100px' }}>{t('Size')}</th>
+              <HomelabAudioTh hash={hash} /* homelab */ />
               <th style={{ width: '400px' }}>{t('Actions')}</th>
             </tr>
           </thead>
@@ -104,11 +107,13 @@ const Table = memo(
                     {fileHasEpisodeText && <td data-label='episode'>{episode}</td>}
                     {fileHasResolutionText && <td data-label='resolution'>{resolution}</td>}
                     <td data-label='size'>{humanizeSize(length)}</td>
+                    <HomelabAudioTd hash={hash} fileId={id} /* homelab */ />
                     <td>
                       <div className='button-cell'>
                         <Button onClick={() => preloadBuffer(id)} variant='outlined' color='primary' size='small'>
                           {t('Preload')}
                         </Button>
+                        <HomelabDownloadButton hash={hash} fileId={id} /* homelab */ />
                         {isApple && isInfuseUsed && (
                           <a style={{ textDecoration: 'none' }} href={infuseLink}>
                             <Button style={{ width: '100%' }} variant='outlined' color='primary' size='small'>
@@ -223,11 +228,13 @@ const Table = memo(
                       <div className='short-table-field-name'>{t('Size')}</div>
                       <div className='short-table-field-value'>{humanizeSize(length)}</div>
                     </div>
+                    <HomelabAudioShort hash={hash} fileId={id} /* homelab */ />
                   </div>
                   <div className='short-table-buttons'>
                     <Button onClick={() => preloadBuffer(id)} variant='outlined' color='primary' size='small'>
                       {t('Preload')}
                     </Button>
+                    <HomelabDownloadButton hash={hash} fileId={id} /* homelab */ />
 
                     {isApple && isInfuseUsed && (
                       <a style={{ textDecoration: 'none' }} href={infuseLink}>
