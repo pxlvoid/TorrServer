@@ -235,7 +235,8 @@ func hlReaderEnd(c *Cache, fileLength, end int64) int64 {
 //     Readers[0] (Reader → End) and the Completed pieces in a row after it; with End at the file end the dots
 //     were red until the whole file was on disk, and a download reader could be taken for the player;
 //   - Filled (preloaded_bytes of the torrent — Lampa's preload progress, the buffer bar of the web UI): what is
-//     on disk in those windows, not the whole disk cache — otherwise preload is "ready" at once;
+//     on disk in those windows and in the ranges of a running preload, not the whole disk cache — otherwise
+//     preload is "ready" at once even if the start of the file is not on disk;
 //   - Pieces: only those windows. The web UI polls /cache ten times a second, and every piece on disk made it
 //     hundreds of KB (a whole cached film) — the torrent details choked on it. What is on disk as a whole is
 //     shown by the homelab UI (HomelabList, HomelabPieces).
@@ -259,7 +260,7 @@ func hlAdjustState(c *Cache, st *state.CacheState) {
 		}
 	}
 	st.Readers = readers
-	window = mergeRange(window)
+	window = mergeRange(append(window, hlPreloadWindows(c)...)) // a running preload counts too (homelab_preload.go)
 	last := c.pieceCount - 1
 	if p, ok := st.Pieces[last]; ok {
 		p.Length = hlPieceLen(h.total, c.pieceLength, c.pieceCount, last)

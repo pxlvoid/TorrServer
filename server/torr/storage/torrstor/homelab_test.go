@@ -350,3 +350,67 @@ func TestHomelabSetInfo(t *testing.T) {
 		t.Fatalf("items: %+v", items)
 	}
 }
+
+// Preload reads with engine readers of its own: its ranges must count for Filled, or Lampa waits for 0% forever.
+func TestHomelabPreloadCountsForFilled(t *testing.T) {
+	hlTestSettings(t, settings.HomelabSets{PersistentCache: true})
+	info := &metainfo.Info{Name: "x", PieceLength: 16, Length: 16 * 10, Pieces: make([]byte, 10*20)}
+	impl, _ := NewStorage(64).OpenTorrent(info, metainfo.NewHashFromHex("1212121212121212121212121212121212121212"))
+	c := impl.(*Cache)
+	defer c.Close()
+
+	state10 := func() *state.CacheState {
+		st := &state.CacheState{Pieces: map[int]state.ItemState{}}
+		for i := 0; i < 10; i++ { // the whole file on disk
+			st.Pieces[i] = state.ItemState{Id: i, Size: 16, Length: 16, Completed: true}
+		}
+		return st
+	}
+	p := &hlPreload{ranges: []Range{{Start: 0, End: 1}, {Start: 9, End: 9}}}
+	hlPreloadMu.Lock()
+	hlPreloadRanges[c] = map[int]*hlPreload{1: p}
+	hlPreloadMu.Unlock()
+	t.Cleanup(func() {
+		hlPreloadMu.Lock()
+		delete(hlPreloadRanges, c)
+		hlPreloadMu.Unlock()
+	})
+
+	st := state10()
+	hlAdjustState(c, st)
+	if st.Filled != 3*16 || len(st.Pieces) != 3 {
+		t.Fatalf("during preload: Filled %d, pieces %d; want 48 and 3", st.Filled, len(st.Pieces))
+	}
+
+	// from disk a preload ends before Lampa asks: its ranges still count for a while
+	hlPreloadMu.Lock()
+	p.until = time.Now().Add(time.Minute)
+	hlPreloadMu.Unlock()
+	st = state10()
+	hlAdjustState(c, st)
+	if st.Filled != 3*16 {
+		t.Fatalf("just after preload: Filled %d, want 48", st.Filled)
+	}
+
+	hlPreloadMu.Lock()
+	p.until = time.Now().Add(-time.Second)
+	hlPreloadMu.Unlock()
+	st = state10()
+	hlAdjustState(c, st)
+	if st.Filled != 0 {
+		t.Fatalf("long after preload, no player: Filled %d", st.Filled)
+	}
+}
+
+func TestHomelabPreloadPieces(t *testing.T) {
+	mb := int64(1 << 20)
+	// a 1 GB file from offset 0, 4 MB pieces, preload 32 MB: the start up to 32-8 MB and the last 8 MB
+	got := hlPreloadPieces(0, 1024*mb, 32*mb, 4*mb)
+	if len(got) != 2 || got[0].Start != 0 || got[0].End != 5 || got[1].Start != 254 || got[1].End != 255 {
+		t.Fatalf("ranges: %+v", got)
+	}
+	// preload smaller than the tail: just the start
+	if got := hlPreloadPieces(0, 1024*mb, 4*mb, 4*mb); got[0].End != 0 {
+		t.Fatalf("small preload: %+v", got)
+	}
+}

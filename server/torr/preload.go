@@ -12,6 +12,7 @@ import (
 	"server/log"
 	"server/settings"
 	"server/torr/state"
+	"server/torr/storage/torrstor"
 	utils2 "server/utils"
 
 	"github.com/anacrolix/torrent"
@@ -63,6 +64,7 @@ func (t *Torrent) Preload(index int, size int64) {
 	if t.Info() == nil {
 		return
 	}
+	defer torrstor.HomelabPreloadStart(t.GetCache(), file, size)() // homelab: the preload ranges count for preloaded_bytes
 
 	timeout := time.Second * time.Duration(settings.BTsets.TorrentDisconnectTimeout)
 	if timeout > time.Minute {
