@@ -4,7 +4,9 @@ package torr
 
 import (
 	"bytes"
+	"encoding/binary"
 	"io"
+	"math"
 	"testing"
 
 	"server/settings"
@@ -40,6 +42,13 @@ var (
 	idCluster = []byte{0x1F, 0x43, 0xB6, 0x75}
 )
 
+// Info with TimecodeScale 1 ms and Duration 6 000 000 ms as a float64: 100 minutes
+func testInfo() []byte {
+	d := make([]byte, 8)
+	binary.BigEndian.PutUint64(d, math.Float64bits(6000000))
+	return ebml(idInfo, ebml([]byte{0x2A, 0xD7, 0xB1}, []byte{0x0F, 0x42, 0x40}), ebml([]byte{0x44, 0x89}, d))
+}
+
 func testMkv() []byte {
 	tracks := ebml(idTracks,
 		ebml(idEntry, ebmlUint(idNumber, 1), ebmlUint(idType, 1), ebml(idCodec, []byte("V_MPEG4/ISO/AVC"))),
@@ -50,7 +59,7 @@ func testMkv() []byte {
 			ebmlUint(idDefault, 0), ebml(idName, []byte("Original"))),
 		ebml(idEntry, ebmlUint(idNumber, 4), ebmlUint(idType, 0x11), ebml(idCodec, []byte("S_TEXT/UTF8"))),
 	)
-	segment := ebml(idSegment, ebml(idInfo, []byte{0xEC, 0x80}), tracks, ebml(idCluster, make([]byte, 200)))
+	segment := ebml(idSegment, testInfo(), tracks, ebml(idCluster, make([]byte, 200)))
 	return append(ebml(idEBML, []byte{0x42, 0x86, 0x81, 0x01}), segment...)
 }
 
@@ -61,6 +70,9 @@ func TestHomelabMkvTracks(t *testing.T) {
 	}
 	if len(hdr.tracks) != 2 {
 		t.Fatalf("audio tracks: got %d, want 2", len(hdr.tracks))
+	}
+	if hdr.duration != 6000 {
+		t.Fatalf("duration: %v, want 6000 s", hdr.duration)
 	}
 	a, b := hdr.tracks[0], hdr.tracks[1]
 	if a.Number != 2 || a.Name != "DVO - Кубик в Кубе" || a.Lang != "rus" || a.Codec != "AC3" || !a.Default || a.defLen != 0 {

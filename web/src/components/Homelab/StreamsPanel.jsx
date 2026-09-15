@@ -4,13 +4,15 @@ import { useTranslation } from 'react-i18next'
 import { humanizeSize, humanizeSpeed } from 'utils/Utils'
 
 import './i18n'
-import { episodeOf, useTorrentStreams } from './streams'
+import { episodeOf, fmtTime, playerTime, useTorrentStreams } from './streams'
+import { useSourceLabel } from './StreamsSummary'
 import { ProgressBar, StreamsBox } from './style'
 
 const clock = unix => new Date(unix * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
 export default function HomelabStreamsPanel({ hash, dark }) {
   const { t } = useTranslation()
+  const sourceLabel = useSourceLabel()
   const clients = useTorrentStreams(hash)
   if (!clients.length) return null
 
@@ -32,7 +34,10 @@ export default function HomelabStreamsPanel({ hash, dark }) {
             <ProgressBar dark={dark} value={c.position * 100} />
             <div className='stream-meta'>
               {[
-                `${Math.round(c.position * 100)}%`,
+                playerTime(c)
+                  ? `${fmtTime(playerTime(c).at)} / ${fmtTime(playerTime(c).total)}`
+                  : `${Math.round(c.position * 100)}%`,
+                sourceLabel(c),
                 t('Homelab.StreamSince', { time: clock(c.since) }),
                 t('Homelab.StreamSent', { size: humanizeSize(c.bytes) || '0' }),
                 c.connections > 1 && t('Homelab.StreamConnections', { count: c.connections }),

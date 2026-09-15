@@ -13,9 +13,11 @@ package torr
 // homelab_streams.go).
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -48,6 +50,9 @@ const (
 	mkvLanguageBCP  = 0x22B59D
 	mkvCodecID      = 0x86
 	mkvCluster      = 0x1F43B675
+	mkvInfo         = 0x1549A966
+	mkvTimecodeScal = 0x2AD7B1
+	mkvDuration     = 0x4489
 
 	mkvTypeAudio   = 2
 	mkvTypeControl = 0x20 // not audio, video or subtitles: players skip the track
@@ -78,7 +83,8 @@ type HomelabAudioTrack struct {
 }
 
 type hlMkvHeader struct {
-	tracks []HomelabAudioTrack
+	tracks   []HomelabAudioTrack
+	duration float64 // seconds, 0 — unknown (who is watching shows the time with it, homelab_streams.go)
 }
 
 // hlPatch — bytes replacing the file content at off.
@@ -445,6 +451,37 @@ func (s *hlSource) elem(off int64) (hlElem, error) {
 	return e, nil
 }
 
+// duration — seconds from an Info element: Duration (a float in TimecodeScale units, 1 ms by default).
+func (s *hlSource) duration(info hlElem) float64 {
+	scale, dur := uint64(1000000), 0.0
+	for off := info.data; off < info.next; {
+		e, err := s.elem(off)
+		if err != nil || e.unknown {
+			break
+		}
+		switch e.id {
+		case mkvTimecodeScal:
+			if v, err := s.uintAt(e); err == nil && v > 0 {
+				scale = v
+			}
+		case mkvDuration:
+			if b, err := s.at(e.data, int(e.size)); err == nil {
+				switch e.size {
+				case 4:
+					dur = float64(math.Float32frombits(binary.BigEndian.Uint32(b)))
+				case 8:
+					dur = math.Float64frombits(binary.BigEndian.Uint64(b))
+				}
+			}
+		}
+		off = e.next
+	}
+	if dur <= 0 || math.IsNaN(dur) || math.IsInf(dur, 0) {
+		return 0
+	}
+	return dur * float64(scale) / 1e9
+}
+
 func (s *hlSource) uintAt(e hlElem) (uint64, error) {
 	if e.size < 1 || e.size > 8 {
 		return 0, errors.New("mkv: bad uint")
@@ -488,12 +525,16 @@ func hlParseMkv(r io.ReadSeeker) (*hlMkvHeader, error) {
 		return nil, errors.New("mkv: no Segment")
 	}
 
-	// top level: Tracks itself, or where SeekHead says it is; stop at the first Cluster
-	tracks := int64(-1)
+	// top level: Tracks itself, or where SeekHead says it is; stop at the first Cluster. Info (the duration) on the way.
+	tracks, info := int64(-1), int64(-1)
+	duration := 0.0
 	for off := seg.data; off < hlHeadLimit; {
 		e, err := s.elem(off)
 		if err != nil {
 			return nil, err
+		}
+		if e.id == mkvInfo && !e.unknown {
+			duration = s.duration(e)
 		}
 		if e.id == mkvTracks {
 			tracks = off
@@ -502,6 +543,9 @@ func hlParseMkv(r io.ReadSeeker) (*hlMkvHeader, error) {
 		if e.id == mkvSeekHead && !e.unknown {
 			if pos, ok := s.seekTo(e, mkvTracks); ok && tracks < 0 {
 				tracks = seg.data + pos
+			}
+			if pos, ok := s.seekTo(e, mkvInfo); ok && info < 0 {
+				info = seg.data + pos
 			}
 		}
 		if e.id == mkvCluster || e.unknown {
@@ -520,7 +564,13 @@ func hlParseMkv(r io.ReadSeeker) (*hlMkvHeader, error) {
 		return nil, errors.New("mkv: bad Tracks")
 	}
 
-	hdr := &hlMkvHeader{}
+	if duration == 0 && info >= 0 { // Info after Tracks: where SeekHead says
+		if e, err := s.elem(info); err == nil && e.id == mkvInfo && !e.unknown {
+			duration = s.duration(e)
+		}
+	}
+
+	hdr := &hlMkvHeader{duration: duration}
 	for off := te.data; off < te.next; {
 		entry, err := s.elem(off)
 		if err != nil {

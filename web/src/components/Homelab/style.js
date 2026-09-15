@@ -197,7 +197,7 @@ export const Actions = styled.div`
 export const WatchCard = styled.div`
   ${({ theme: { torrentCard } }) => css`
     grid-column: 1 / -1;
-    padding: 12px 16px;
+    padding: 10px 16px;
     border-radius: 5px;
     background: ${torrentCard.cardPrimaryColor};
     color: #fff;
@@ -212,63 +212,97 @@ export const WatchCard = styled.div`
     .watch-head {
       display: flex;
       justify-content: space-between;
-      align-items: baseline;
       gap: 12px;
-      margin-bottom: 8px;
-      font-size: 15px;
-    }
-
-    .watch-total {
-      font-size: 13px;
-      opacity: 0.9;
+      padding-bottom: 6px;
+      font-size: 12px;
+      opacity: 0.85;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
     }
 
     .watch-row {
       display: grid;
-      grid-template-columns: 110px 1fr auto;
+      grid-template-columns: 34px 1fr auto;
       align-items: center;
-      gap: 4px 16px;
-      padding: 8px 0;
+      gap: 14px;
+      padding: 4px 0;
     }
 
     .watch-row + .watch-row {
+      margin-top: 4px;
+      padding-top: 8px;
       border-top: 1px solid rgb(255 255 255 / 15%);
     }
 
-    .watch-paused {
-      opacity: 0.65;
+    .watch-paused .watch-main,
+    .watch-paused .watch-speed {
+      opacity: 0.7;
     }
 
-    .watch-device {
-      font-size: 13px;
-      font-weight: 600;
-      white-space: nowrap;
+    .watch-poster {
+      width: 34px;
+      height: 50px;
+      border-radius: 3px;
       overflow: hidden;
-      text-overflow: ellipsis;
+      display: grid;
+      place-items: center;
+      background: rgb(0 0 0 / 20%);
+      font-size: 14px;
     }
 
-    .watch-what {
+    .watch-poster img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .watch-main {
       min-width: 0;
     }
 
     .watch-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       font-size: 14px;
+      font-weight: 500;
       white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .watch-sub {
+      font-size: 12px;
+      font-weight: 400;
+      opacity: 0.8;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
-    .watch-episode {
-      margin-left: 8px;
-      font-size: 12px;
-      opacity: 0.8;
+    .watch-dot {
+      flex: none;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgb(255 255 255 / 50%);
+    }
+
+    .watch-dot-live {
+      background: #fff;
+      animation: watch-pulse 1.6s ease-in-out infinite;
+    }
+
+    .watch-progress {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 5px 0 3px;
     }
 
     .watch-bar {
+      flex: 1;
       height: 4px;
-      margin: 6px 0 4px;
       border-radius: 2px;
-      background: rgb(255 255 255 / 20%);
+      background: rgb(255 255 255 / 22%);
       overflow: hidden;
     }
 
@@ -278,31 +312,49 @@ export const WatchCard = styled.div`
       background: #fff;
     }
 
+    .watch-time {
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      opacity: 0.9;
+    }
+
     .watch-meta {
       font-size: 11px;
-      opacity: 0.8;
+      opacity: 0.75;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .watch-speed {
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 300;
       white-space: nowrap;
       font-variant-numeric: tabular-nums;
     }
 
-    @media (max-width: 700px) {
-      padding: 10px 12px;
+    @keyframes watch-pulse {
+      50% {
+        opacity: 0.3;
+      }
+    }
+
+    @media (max-width: 600px) {
+      padding: 8px 12px;
 
       .watch-row {
-        grid-template-columns: 1fr auto;
+        grid-template-columns: 28px 1fr auto;
+        gap: 10px;
       }
 
-      .watch-device {
-        grid-column: 1 / -1;
+      .watch-poster {
+        width: 28px;
+        height: 42px;
       }
 
       .watch-speed {
-        font-size: 15px;
+        font-size: 13px;
       }
     }
   `}
@@ -310,129 +362,235 @@ export const WatchCard = styled.div`
 
 // a client in the dialog (StreamsDialog), in the look of the disk cache cards
 export const StreamCard = styled.div`
-  ${({ theme: { torrentCard }, dark }) => css`
-    padding: 14px 16px;
-    border-radius: 5px;
-    background: ${dark ? torrentCard.cardPrimaryColor : '#fff'};
-    box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+  ${({ theme: { torrentCard }, dark }) => {
+    const c = dlColors(dark)
+    return css`
+      padding: 16px;
+      border-radius: 6px;
+      background: ${dark ? torrentCard.cardPrimaryColor : '#fff'};
+      box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
 
-    & + & {
-      margin-top: 12px;
-    }
+      & + & {
+        margin-top: 12px;
+      }
 
-    &.stream-card-ended {
-      opacity: 0.55;
-    }
+      &.sc-ended {
+        opacity: 0.55;
+      }
 
-    .stream-card-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 12px;
-    }
+      .sc-top {
+        display: grid;
+        grid-template-columns: 56px 1fr auto;
+        gap: 14px;
+        align-items: start;
+      }
 
-    .stream-card-device {
-      font-size: 17px;
-      font-weight: 600;
-    }
+      .sc-poster {
+        width: 56px;
+        height: 84px;
+        border-radius: 4px;
+        overflow: hidden;
+        display: grid;
+        place-items: center;
+        background: ${c.track};
+      }
 
-    .stream-card-state {
-      margin-left: 10px;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-size: 11px;
-      background: rgb(127 127 127 / 18%);
-    }
+      .sc-poster img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
 
-    .stream-card-live {
-      background: #d32f2f;
-      color: #fff;
-    }
+      .sc-what {
+        min-width: 0;
+      }
 
-    .stream-card-speed {
-      font-size: 24px;
-      font-weight: 300;
-      white-space: nowrap;
-      font-variant-numeric: tabular-nums;
-    }
+      .sc-title {
+        font-size: 17px;
+        font-weight: 600;
+        line-height: 1.25;
+      }
 
-    .stream-card-title {
-      margin-top: 8px;
-      font-size: 15px;
-      font-weight: 500;
-      line-height: 1.3;
-    }
+      .sc-sub {
+        margin-top: 2px;
+        font-size: 13px;
+        opacity: 0.75;
+      }
 
-    .stream-card-sub {
-      margin-left: 8px;
-      font-size: 13px;
-      font-weight: 400;
-      opacity: 0.75;
-    }
+      .sc-state {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-top: 8px;
+        font-size: 13px;
+        opacity: 0.85;
+      }
 
-    .stream-card-file {
-      margin: 2px 0 10px;
-      font-size: 12px;
-      opacity: 0.7;
-      word-break: break-all;
-    }
+      .sc-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: ${c.line};
+      }
 
-    .stream-card-pos {
-      margin-top: 6px;
-      font-size: 12px;
-      opacity: 0.85;
-    }
+      .sc-dot-live {
+        background: ${c.accent};
+        animation: sc-pulse 1.6s ease-in-out infinite;
+      }
 
-    .stream-spark {
-      margin-top: 12px;
-    }
+      .sc-speed {
+        text-align: right;
+        white-space: nowrap;
+      }
 
-    .stream-spark svg {
-      display: block;
-      width: 100%;
-      height: 48px;
-    }
+      .sc-speed b {
+        display: block;
+        font-size: 22px;
+        font-weight: 300;
+        font-variant-numeric: tabular-nums;
+      }
 
-    .stream-spark-legend {
-      display: flex;
-      justify-content: space-between;
-      font-size: 11px;
-      opacity: 0.7;
-      margin-top: 2px;
-    }
+      .sc-speed span {
+        font-size: 11px;
+        opacity: 0.7;
+      }
 
-    .stream-spark-empty {
-      margin-top: 12px;
-      font-size: 12px;
-      opacity: 0.6;
-    }
+      .sc-time {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        margin: 16px 0 6px;
+        font-variant-numeric: tabular-nums;
+      }
 
-    .stream-card-facts {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 8px 20px;
-      margin: 14px 0 0;
-    }
+      .sc-time b {
+        font-size: 24px;
+        font-weight: 400;
+      }
 
-    .stream-card-facts dt {
-      font-size: 11px;
-      opacity: 0.65;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-    }
+      .sc-time span {
+        font-size: 14px;
+        opacity: 0.7;
+      }
 
-    .stream-card-facts dd {
-      margin: 2px 0 0;
-      font-size: 13px;
-    }
+      .sc-time .sc-left {
+        margin-left: auto;
+        opacity: 0.85;
+      }
 
-    .stream-card-ua {
-      margin-top: 12px;
-      font-size: 11px;
-      opacity: 0.6;
-      word-break: break-all;
-    }
-  `}
+      .sc-bar {
+        height: 6px;
+        border-radius: 3px;
+        background: ${c.track};
+        overflow: hidden;
+      }
+
+      .sc-bar div {
+        height: 100%;
+        border-radius: 3px;
+        background: ${c.accent};
+      }
+
+      .sc-health {
+        margin-top: 12px;
+        padding: 8px 10px;
+        border-radius: 5px;
+        font-size: 13px;
+        line-height: 1.35;
+        background: ${c.track};
+      }
+
+      .sc-good {
+        border-left: 3px solid ${c.accent};
+      }
+
+      .sc-warn {
+        border-left: 3px solid ${dark ? '#ffb74d' : '#e65100'};
+      }
+
+      .sc-graph {
+        margin-top: 14px;
+      }
+
+      .sc-graph svg {
+        display: block;
+        width: 100%;
+        height: 40px;
+      }
+
+      .sc-graph-legend {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 3px;
+        font-size: 11px;
+        opacity: 0.65;
+      }
+
+      .sc-graph-bitrate {
+        color: ${dark ? '#ffb74d' : '#e65100'};
+        opacity: 1;
+      }
+
+      .sc-graph-empty {
+        margin-top: 14px;
+        font-size: 12px;
+        opacity: 0.6;
+      }
+
+      .sc-details {
+        margin-top: 12px;
+        font-size: 13px;
+      }
+
+      .sc-details summary {
+        cursor: pointer;
+        opacity: 0.75;
+        font-size: 12px;
+      }
+
+      .sc-details dl {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 4px 14px;
+        margin: 8px 0 0;
+      }
+
+      .sc-details div {
+        display: contents;
+      }
+
+      .sc-details dt {
+        opacity: 0.65;
+      }
+
+      .sc-details dd {
+        margin: 0;
+        word-break: break-all;
+      }
+
+      @keyframes sc-pulse {
+        50% {
+          opacity: 0.35;
+        }
+      }
+
+      @media (max-width: 500px) {
+        .sc-top {
+          grid-template-columns: 48px 1fr;
+        }
+
+        .sc-poster {
+          width: 48px;
+          height: 72px;
+        }
+
+        .sc-speed {
+          grid-column: 1 / -1;
+          text-align: left;
+        }
+      }
+    `
+  }}
 `
 
 // ---------- main screen: summary above the torrent list ----------

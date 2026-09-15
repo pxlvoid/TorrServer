@@ -45,9 +45,9 @@ type hlSample struct {
 }
 
 type hlStream struct {
-	hash, title, path, ip, ua string
-	length, fileOffset, pl    int64 // the file in the torrent and its piece length: how much of it is on disk
-	started                   time.Time
+	hash, title, poster, path, ip, ua string
+	length, fileOffset, pl            int64 // the file in the torrent and its piece length: how much of it is on disk
+	started                           time.Time
 
 	mu       sync.Mutex
 	bytes    int64
@@ -89,8 +89,14 @@ func hlStreamOpen(req *http.Request, t *Torrent, file *torrent.File) *hlStream {
 		title = t.Torrent.Name()
 	}
 	s := &hlStream{
-		hash: t.Hash().HexString(), title: title, path: file.Path(), length: file.Length(), fileOffset: file.Offset(),
-		ip: ip, ua: req.UserAgent(), started: time.Now(),
+		hash: t.Hash().HexString(), title: title, poster: t.Poster, path: file.Path(), length: file.Length(),
+		fileOffset: file.Offset(), ip: ip, ua: req.UserAgent(), started: time.Now(),
+	}
+	// the duration of an MKV (the time of the player) — from its header, read aside, not holding up the stream
+	if key := s.hash + "/" + s.path; hlIsMkv(s.path) {
+		if _, ok := hlHeaders.Load(key); !ok {
+			go hlHeaderWait(t, file, key)
+		}
 	}
 	if info := file.Torrent().Info(); info != nil {
 		s.pl = info.PieceLength
@@ -162,8 +168,10 @@ type HomelabStreamClient struct {
 	Ended       bool    `json:"ended"` // no request any more, listed for hlStreamLinger
 
 	FileLength int64   `json:"fileLength"`
-	Offset     int64   `json:"offset"`     // where the player reads, bytes of the file
-	OnDisk     float64 `json:"onDisk"`     // share of the file in the disk cache, -1 — unknown
+	Offset     int64   `json:"offset"` // where the player reads, bytes of the file
+	OnDisk     float64 `json:"onDisk"` // share of the file in the disk cache, -1 — unknown
+	Poster     string  `json:"poster,omitempty"`
+	Duration   float64 `json:"duration"`   // seconds of the file (MKV), 0 — unknown; the time ≈ Position × Duration
 	NetSpeed   float64 `json:"netSpeed"`   // the torrent downloads from peers now, bytes per second
 	Peers      int     `json:"peers"`      // active peers of the torrent
 	TotalPeers int     `json:"totalPeers"` // known peers
@@ -202,7 +210,7 @@ func hlStreamClients(now time.Time) []HomelabStreamClient {
 		if a == nil {
 			a = &agg{c: HomelabStreamClient{
 				Device: hlDevice(s.ua), IP: s.ip, UA: s.ua, Hash: s.hash, Title: s.title, Path: s.path,
-				Since: s.started.Unix(), Ended: true, FileLength: s.length, OnDisk: -1,
+				Since: s.started.Unix(), Ended: true, FileLength: s.length, OnDisk: -1, Poster: s.poster,
 			}, fileOffset: s.fileOffset, pl: s.pl}
 			clients[key] = a
 		}
@@ -238,6 +246,9 @@ func hlStreamClients(now time.Time) []HomelabStreamClient {
 		}
 		if pieces := complete[c.Hash]; pieces != nil && a.pl > 0 && c.FileLength > 0 {
 			c.OnDisk = float64(hlSpanDone(a.fileOffset, c.FileLength, pieces, a.pl)) / float64(c.FileLength)
+		}
+		if v, ok := hlHeaders.Load(c.Hash + "/" + c.Path); ok {
+			c.Duration = v.(*hlMkvHeader).duration
 		}
 		if tt := hlDlLoaded(c.Hash); tt != nil {
 			st := tt.Stats()

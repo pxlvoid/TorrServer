@@ -69,3 +69,26 @@ export function episodeOf(filePath) {
   if (!episode) return ''
   return season ? `S${season}E${episode}` : `E${episode}`
 }
+
+// 1:02:15 / 42:07
+export function fmtTime(seconds) {
+  const s = Math.max(0, Math.round(seconds))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = String(s % 60).padStart(2, '0')
+  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`
+}
+
+// the time of the player, if the duration of the file is known (≈ by the byte position)
+export function playerTime(c) {
+  if (!c.duration) return null
+  const at = c.position * c.duration
+  return { at, total: c.duration, left: c.duration - at, bitrate: c.fileLength / c.duration } // bitrate: bytes/s
+}
+
+// where the data comes from: the whole file on disk, a part, or unknown
+export function sourceOf(c) {
+  if (c.onDisk < 0) return { kind: 'unknown' }
+  if (c.onDisk >= 0.999) return { kind: 'disk' }
+  return { kind: 'partial', share: c.onDisk }
+}
