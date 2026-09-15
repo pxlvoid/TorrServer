@@ -33,7 +33,7 @@ import useOnStandaloneAppOutsideClick from 'utils/useOnStandaloneAppOutsideClick
 import UnsafeButton from '../UnsafeButton'
 import { downloadErrorText, homelabDownloadAction, jobHasFile, useHomelabDownload } from './downloads'
 import EpisodeGrid, { currentEpisode, episodesOf, useTimeLeft } from './EpisodeGrid'
-import HomelabNtfySettings from './NtfySettings'
+import HomelabNtfyForm, { NtfySummary } from './NtfySettings'
 import HomelabTorrentInfoDialog from './TorrentInfoDialog'
 import { parseTitle } from './parseTitle'
 import { publishHomelabCache } from './store'
@@ -85,7 +85,7 @@ function useRelativeTime() {
   )
 }
 
-// the download of a torrent: which episode, how fast, how long is left, how many more are queued
+// the download of a torrent, short: which episode, how fast, how long is left, how many more are queued
 function CardDownload({ hash, download }) {
   const { t } = useTranslation()
   const timeLeft = useTimeLeft()
@@ -93,20 +93,26 @@ function CardDownload({ hash, download }) {
   const job = data?.job || download
   if (!job) return null
   if (job.state === 'error') {
-    return <div className='card-download card-download-error'>↓ {downloadErrorText(t, job)}</div>
+    return (
+      <Tooltip title={downloadErrorText(t, job)}>
+        <span className='card-download card-download-error'>
+          ↓ {t(`Homelab.DownloadErrorShort.${job.error}`, { defaultValue: t('Homelab.DownloadErrorShort.failed') })}
+        </span>
+      </Tooltip>
+    )
   }
-  if (job.state === 'queued') return <div className='card-download'>↓ {t('Homelab.DownloadQueued')}</div>
+  if (job.state === 'queued') return <span className='card-download'>↓ {t('Homelab.DownloadQueued')}</span>
 
   const episodes = episodesOf(data?.files)
   const current = episodes.length > 1 ? currentEpisode(job, episodes) : null
   const more = episodes.filter(e => e !== current && jobHasFile(job, e.id) && e.done < e.length).length
   const parts = [
-    current ? t('Homelab.DownloadingEpisode', { n: current.label }) : t('Homelab.Downloading'),
+    current ? t('Homelab.DownloadingEpisodeShort', { n: current.label }) : t('Homelab.Downloading'),
     job.speed > 0 && humanizeSpeed(job.speed),
     job.speed > 0 && job.total > job.done && timeLeft((job.total - job.done) / job.speed),
     more > 0 && t('Homelab.DownloadQueuedMore', { count: more }),
   ]
-  return <div className='card-download'>↓ {parts.filter(Boolean).join(' · ')}</div>
+  return <span className='card-download'>↓ {parts.filter(Boolean).join(' · ')}</span>
 }
 
 // the episodes of a series on disk — a grid, a click queues an episode or takes it off the queue
@@ -146,6 +152,16 @@ function CacheCard({ item, download, confirming, busy, dark, onPin, onRemove, on
     relativeTime(item.lastAccess),
   ].filter(Boolean)
 
+  const action = (tip, icon, onClick, extra = {}) => (
+    <Tooltip title={tip}>
+      <span>
+        <IconButton size='small' disabled={busy} onClick={onClick} {...extra}>
+          {icon}
+        </IconButton>
+      </span>
+    </Tooltip>
+  )
+
   return (
     <Card pinned={item.pinned} dark={dark}>
       <Poster onClick={() => onOpen(item)} title={t('Homelab.OpenInfo')} style={{ cursor: 'pointer' }}>
@@ -161,68 +177,45 @@ function CacheCard({ item, download, confirming, busy, dark, onPin, onRemove, on
         )}
       </Poster>
 
-      <Info title={fullName}>
-        <button
-          type='button'
-          className='card-title card-open'
-          onClick={() => onOpen(item)}
-          title={t('Homelab.OpenInfo')}
-        >
-          {title}
-        </button>
-        {subtitle && <div className='card-subtitle'>{subtitle}</div>}
-        <div className='card-stats'>
-          {percent !== null && <Bar thin dark={dark} value={percent} style={{ marginBottom: 6 }} />}
-          {stats.join(' · ')}
-          {download && <CardDownload hash={item.hash} download={download} />}
-          {series && (
-            <button type='button' className='card-toggle' onClick={() => setEpisodesOpen(!episodesOpen)}>
-              {episodesOpen ? t('Homelab.EpisodesHide') : t('Homelab.EpisodesShow')}
-            </button>
-          )}
-          {series && episodesOpen && <CardEpisodes hash={item.hash} dark={dark} />}
+      <Info>
+        <div className='card-head'>
+          <button type='button' className='card-title card-open' onClick={() => onOpen(item)} title={fullName}>
+            {title}
+          </button>
+          <Actions>
+            {download
+              ? action(t('Homelab.DownloadStop'), <StopIcon fontSize='small' />, () => onStop(item))
+              : !complete &&
+                action(t('Homelab.DownloadAllHelp'), <GetAppIcon fontSize='small' />, () => onDownload(item))}
+            {action(
+              item.pinned ? t('Homelab.Unpin') : t('Homelab.Pin'),
+              item.pinned ? <StarIcon fontSize='small' /> : <StarBorderIcon fontSize='small' />,
+              () => onPin(item),
+              { color: item.pinned ? 'secondary' : 'default' },
+            )}
+            {action(
+              confirming ? t('Homelab.RemoveConfirm') : item.playing ? t('Homelab.RemovePlaying') : t('Homelab.Remove'),
+              <DeleteIcon fontSize='small' />,
+              () => onRemove(item),
+              { color: confirming ? 'secondary' : 'default' },
+            )}
+          </Actions>
         </div>
-      </Info>
-
-      <Actions>
-        <Tooltip title={item.pinned ? t('Homelab.Unpin') : t('Homelab.Pin')}>
-          <span>
-            <IconButton disabled={busy} onClick={() => onPin(item)} color={item.pinned ? 'secondary' : 'default'}>
-              {item.pinned ? <StarIcon /> : <StarBorderIcon />}
-            </IconButton>
-          </span>
-        </Tooltip>
-        {download ? (
-          <Tooltip title={t('Homelab.DownloadStop')}>
-            <span>
-              <IconButton disabled={busy} onClick={() => onStop(item)}>
-                <StopIcon />
-              </IconButton>
-            </span>
-          </Tooltip>
-        ) : (
-          !complete && (
-            <Tooltip title={t('Homelab.DownloadAllHelp')}>
-              <span>
-                <IconButton disabled={busy} onClick={() => onDownload(item)}>
-                  <GetAppIcon />
-                </IconButton>
-              </span>
-            </Tooltip>
-          )
+        {subtitle && <div className='card-subtitle'>{subtitle}</div>}
+        {percent !== null && <Bar thin dark={dark} value={percent} className='card-bar' />}
+        <div className='card-line'>{stats.join(' · ')}</div>
+        {(download || series) && (
+          <div className='card-line card-line-split'>
+            {download ? <CardDownload hash={item.hash} download={download} /> : <span />}
+            {series && (
+              <button type='button' className='card-toggle' onClick={() => setEpisodesOpen(!episodesOpen)}>
+                {episodesOpen ? t('Homelab.EpisodesHide') : t('Homelab.EpisodesShow')}
+              </button>
+            )}
+          </div>
         )}
-        <Tooltip
-          title={
-            confirming ? t('Homelab.RemoveConfirm') : item.playing ? t('Homelab.RemovePlaying') : t('Homelab.Remove')
-          }
-        >
-          <span>
-            <IconButton disabled={busy} color={confirming ? 'secondary' : 'default'} onClick={() => onRemove(item)}>
-              <DeleteIcon />
-            </IconButton>
-          </span>
-        </Tooltip>
-      </Actions>
+        {series && episodesOpen && <CardEpisodes hash={item.hash} dark={dark} />}
+      </Info>
     </Card>
   )
 }
@@ -322,8 +315,17 @@ export default function DiskCacheDialog({ handleClose }) {
 
   const usage = data?.usage
   const saved = data?.settings
-  const items = data?.items || []
   const downloads = data?.downloads || []
+  const rank = it => {
+    const d = downloads.find(x => x.hash === it.hash)
+    if (it.playing) return 0
+    if (d?.state === 'active') return 1
+    return d ? 2 : 3
+  }
+  const items = (data?.items || [])
+    .map((it, i) => ({ it, i }))
+    .sort((a, b) => rank(a.it) - rank(b.it) || a.i - b.i)
+    .map(x => x.it)
   const dirty =
     form &&
     saved &&
@@ -383,10 +385,12 @@ export default function DiskCacheDialog({ handleClose }) {
                 <SettingsRow dark={dark}>
                   <div className='settings-summary'>
                     {t('Homelab.PersistentShort')}
-                    <small>{saved.persistentCache ? settingsSummary : t('Homelab.PersistentOff')}</small>
+                    <small>
+                      {saved.persistentCache ? settingsSummary : t('Homelab.PersistentOff')} · <NtfySummary />
+                    </small>
                   </div>
-                  <Button size='small' disabled={!usage.ready} onClick={() => setEditing(!editing)}>
-                    {editing ? t('Homelab.Cancel') : t('Homelab.Edit')}
+                  <Button size='small' onClick={() => setEditing(!editing)}>
+                    {editing ? t('Homelab.SettingsHide') : t('Homelab.Settings')}
                   </Button>
                   <Switch
                     color='secondary'
@@ -398,6 +402,7 @@ export default function DiskCacheDialog({ handleClose }) {
 
                 {editing && form && (
                   <SettingsForm>
+                    <Typography variant='subtitle2'>{t('Homelab.PersistentShort')}</Typography>
                     <Typography variant='body2' color='textSecondary'>
                       {t('Homelab.PersistentHelp')}
                     </Typography>
@@ -450,14 +455,11 @@ export default function DiskCacheDialog({ handleClose }) {
                         ))}
                       </ul>
                     </Box>
+                    <HomelabNtfyForm />
                   </SettingsForm>
                 )}
               </Section>
             )}
-
-            <Section>
-              <HomelabNtfySettings dark={dark} />
-            </Section>
 
             {(message || error) && (
               <Section>

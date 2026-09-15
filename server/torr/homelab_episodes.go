@@ -11,10 +11,13 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/metainfo"
 
+	"server/log"
 	_ "server/mimetype" // registers video extensions missing in the system mime table (mkv, ts...)
+	"server/settings"
 	"server/torr/storage/torrstor"
 	utils2 "server/utils"
 )
@@ -42,6 +45,7 @@ var (
 // hlInfo — the metainfo of a torrent: loaded, or from its record in the TorrServer list.
 func hlInfo(hash string) *metainfo.Info {
 	if tt := hlDlLoaded(hash); tt != nil {
+		hlRememberInfo(hash, tt)
 		return tt.Info()
 	}
 	if v, ok := hlInfos.Load(hash); ok {
@@ -60,6 +64,28 @@ func hlInfo(hash string) *metainfo.Info {
 	}
 	hlInfos.Store(hash, info)
 	return info
+}
+
+var hlInfoSaved sync.Map // hash → checked: its record in the TorrServer list has the metainfo
+
+// hlRememberInfo writes the metainfo of a loaded torrent into its record in the TorrServer list if the record has
+// none (a torrent saved before it got its metainfo). Without it the file list — the episodes on disk, the downloads —
+// is unknown while nobody seeds the torrent.
+func hlRememberInfo(hash string, tt *torrent.Torrent) {
+	if _, done := hlInfoSaved.LoadOrStore(hash, true); done || settings.ReadOnly || tt == nil || tt.Info() == nil {
+		return
+	}
+	for _, rec := range settings.ListTorrent() {
+		if rec == nil || rec.TorrentSpec == nil || rec.InfoHash.HexString() != hash {
+			continue
+		}
+		if len(rec.InfoBytes) == 0 {
+			rec.InfoBytes = tt.Metainfo().InfoBytes
+			settings.AddTorrent(rec)
+			log.TLogln("homelab: saved the metainfo of", hash, "into its record in the list")
+		}
+		return
+	}
 }
 
 // hlFileSpans — the files of the torrent in the order and with the ids of file_stats (as hlDlSelect for a loaded one).

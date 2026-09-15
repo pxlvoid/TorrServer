@@ -511,6 +511,7 @@ func hlDlRun(ctx context.Context, job *hlDlJob) error {
 	if err != nil {
 		return err
 	}
+	hlRememberInfo(job.Hash, tt) // the episodes stay known when the torrent is closed
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}

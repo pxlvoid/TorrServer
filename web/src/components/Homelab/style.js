@@ -89,16 +89,17 @@ export const CardList = styled.div`
 export const Card = styled.div`
   ${({ theme: { torrentCard, secondary }, pinned, dark }) => css`
     display: grid;
-    grid-template-columns: 64px 1fr auto;
+    grid-template-columns: 48px 1fr;
+    align-items: start;
     gap: 12px;
-    padding: 10px;
+    padding: 8px 10px;
     border-radius: 5px;
     background: ${dark ? torrentCard.cardPrimaryColor : '#fff'};
     box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
     border-left: 3px solid ${pinned ? secondary : 'transparent'};
 
     @media (max-width: 500px) {
-      grid-template-columns: 56px 1fr auto;
+      grid-template-columns: 40px 1fr;
       gap: 10px;
     }
   `}
@@ -107,9 +108,9 @@ export const Card = styled.div`
 export const Poster = styled.div`
   ${({ theme: { torrentCard } }) => css`
     position: relative;
-    width: 64px;
-    height: 96px;
-    border-radius: 5px;
+    width: 48px;
+    height: 72px;
+    border-radius: 4px;
     overflow: hidden;
     background: ${torrentCard.cardSecondaryColor};
     display: grid;
@@ -121,9 +122,13 @@ export const Poster = styled.div`
       object-fit: cover;
     }
 
+    svg {
+      opacity: 0.6;
+    }
+
     @media (max-width: 500px) {
-      width: 56px;
-      height: 84px;
+      width: 40px;
+      height: 60px;
     }
   `}
 `
@@ -134,8 +139,8 @@ export const PlayingBadge = styled.div`
     left: 0;
     right: 0;
     bottom: 0;
-    padding: 2px 0;
-    font-size: 9px;
+    padding: 1px 0;
+    font-size: 8px;
     font-weight: 600;
     letter-spacing: 0.4px;
     text-transform: uppercase;
@@ -149,17 +154,49 @@ export const Info = styled.div`
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
 
   .card-title {
+    flex: 1;
+    min-width: 0;
     font-size: 15px;
     font-weight: 600;
-    line-height: 1.25;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+    line-height: 1.3;
+    white-space: nowrap;
     overflow: hidden;
-    word-break: break-word;
+    text-overflow: ellipsis;
+  }
+
+  .card-bar {
+    margin: 5px 0 3px;
+  }
+
+  .card-line {
+    font-size: 12px;
+    opacity: 0.85;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .card-line-split {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  .card-line-split > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .card-subtitle {
@@ -177,7 +214,7 @@ export const Info = styled.div`
   }
 
   .card-download {
-    margin-top: 3px;
+    display: inline;
   }
 
   .card-open {
@@ -195,8 +232,7 @@ export const Info = styled.div`
   }
 
   .card-toggle {
-    display: block;
-    margin-top: 6px;
+    flex: none;
     padding: 0;
     border: 0;
     background: none;
@@ -223,11 +259,12 @@ export const Info = styled.div`
   }
 `
 
+// actions of a card: a row of small icon buttons next to the title
 export const Actions = styled.div`
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  margin: -6px -6px -6px 0;
+  flex: none;
+  gap: 2px;
+  margin: -4px -4px -4px 0;
 `
 
 // ---------- main screen: who is watching now (StreamsSummary, StreamsDialog) ----------
