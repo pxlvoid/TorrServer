@@ -22,6 +22,7 @@ func homelabRoutes(authorized gin.IRouter) {
 	authorized.POST("/homelab/download", homelabDownload)
 	authorized.POST("/homelab/audio", homelabAudio)
 	authorized.POST("/homelab/pieces", homelabPieces)
+	authorized.POST("/homelab/ntfy", homelabNtfy)
 	torrstor.HomelabStartJanitor()
 	torr.HomelabDownloadsStart()
 }
@@ -69,9 +70,12 @@ func homelabList() homelabCacheResp {
 	listed := map[string]bool{}
 	for _, it := range items {
 		listed[it.Hash] = true
-		item := homelabCacheItem{HomelabItem: it}
+		item := homelabCacheItem{HomelabItem: it, Title: it.SavedTitle, Poster: it.SavedPoster}
 		if t := known[it.Hash]; t != nil {
 			item.Title, item.Poster = t.Title, t.Poster
+			if t.Title != it.SavedTitle || t.Poster != it.SavedPoster {
+				torrstor.HomelabSetInfo(it.Hash, t.Title, t.Poster) // the card keeps them if the torrent is removed
+			}
 		}
 		if done, total, ok := torr.HomelabEpisodes(it.Hash); ok && total > 1 {
 			item.Episodes, item.EpisodesDone = total, done
@@ -262,6 +266,60 @@ func homelabPieces(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, m)
+}
+
+type homelabNtfyReq struct {
+	Action     string          `json:"action"` // get | save | test
+	URL        string          `json:"url"`
+	Topic      string          `json:"topic"`
+	Token      string          `json:"token,omitempty"`      // empty — keep the stored one
+	TokenClear bool            `json:"tokenClear,omitempty"` // forget the stored token
+	Events     map[string]bool `json:"events,omitempty"`
+}
+
+// the settings as the web UI sees them: the token itself never leaves the server
+type homelabNtfyResp struct {
+	URL      string          `json:"url"`
+	Topic    string          `json:"topic"`
+	TokenSet bool            `json:"tokenSet"`
+	Events   map[string]bool `json:"events"`
+}
+
+// homelabNtfy — ntfy notifications (torrstor/homelab_ntfy.go). test sends a notification with the form's settings
+// without saving them (the stored token if none is given).
+func homelabNtfy(c *gin.Context) {
+	var req homelabNtfyReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+	cur := sets.GetHomelabNtfy()
+	form := sets.HomelabNtfy{URL: req.URL, Topic: req.Topic, Token: cur.Token, Events: req.Events}
+	if req.Token != "" {
+		form.Token = req.Token
+	}
+	if req.TokenClear {
+		form.Token = ""
+	}
+	var err error
+	switch req.Action {
+	case "get":
+	case "save":
+		err = sets.SetHomelabNtfy(form)
+	case "test": // the form as it is, not saved
+		var n sets.HomelabNtfy
+		if n, err = sets.NormalizeHomelabNtfy(form); err == nil {
+			err = torrstor.HomelabNotifyTest(n)
+		}
+	default:
+		err = errors.New("unknown action")
+	}
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	n := sets.GetHomelabNtfy()
+	c.JSON(http.StatusOK, homelabNtfyResp{URL: n.URL, Topic: n.Topic, TokenSet: n.Token != "", Events: n.Events})
 }
 
 func homelabGetSettings(c *gin.Context) {

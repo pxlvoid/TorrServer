@@ -334,3 +334,19 @@ func TestHomelabDownloadReaderIsNotPlayer(t *testing.T) {
 		t.Fatalf("unmarked — two players, got %d", n)
 	}
 }
+
+// Title and poster of the TorrServer list are kept in the cache meta: the card keeps them after the torrent is removed.
+func TestHomelabSetInfo(t *testing.T) {
+	root := hlTestSettings(t, settings.HomelabSets{PersistentCache: true})
+	hash := "efefefefefefefefefefefefefefefefefefefef"
+	dir := filepath.Join(root, hash)
+	hlWriteFile(t, filepath.Join(dir, "0"), 16, time.Now())
+	if err := hlWriteMeta(dir, &hlMeta{Hash: hash, Name: "The.Boys.S05", PieceLength: 16, PieceCount: 1, Pinned: true}); err != nil {
+		t.Fatal(err)
+	}
+	HomelabSetInfo(hash, "Пацаны", "https://example.org/p.jpg")
+	items, _ := HomelabList()
+	if len(items) != 1 || items[0].SavedTitle != "Пацаны" || items[0].SavedPoster != "https://example.org/p.jpg" || !items[0].Pinned {
+		t.Fatalf("items: %+v", items)
+	}
+}

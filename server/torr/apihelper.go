@@ -165,6 +165,7 @@ func RemTorrent(hashHex string) {
 		return
 	}
 	hash := metainfo.NewHashFromHex(hashHex)
+	hlOnRemove(hashHex) // homelab: stop its download to disk, forget its audio choice
 
 	// Download the torrent before deleting it to get the "closed" status
 	torr := bts.GetTorrent(hash)

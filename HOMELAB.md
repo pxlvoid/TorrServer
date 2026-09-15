@@ -24,7 +24,10 @@
   На диске всегда остаётся ≥ 5 ГБ свободного места. То, что сейчас смотрят, и **закреплённые** (★) торренты
   уборщик не трогает.
 - Кэш переживает перезапуск, drop торрента и удаление торрента из списка (`RemTorrent`) — удаляют его только
-  уборщик и кнопки в диалоге.
+  уборщик и кнопки в диалоге. Название и постер из списка запоминаются в `.homelab.json`: карточка кэша удалённого
+  торрента их не теряет. При удалении торрента его загрузка на диск снимается (до закрытия торрента, чтобы она
+  не открыла его снова), выбор аудиодорожек забывается. «Удалить все» — так же; галочка в подтверждении
+  «Также очистить кэш на диске» (по умолчанию выкл.) после удаления чистит незакреплённое.
 - Куски, прошедшие проверку хэша, запоминаются в `<кэш>/<hash>/.homelab.json` и после перезапуска считаются
   готовыми (включая короткий последний кусок — в upstream он никогда не считался готовым). Файл куска без такой
   отметки перепроверяется движком, а не принимается по размеру: куски качаются вразнобой, и файл полного
@@ -69,6 +72,12 @@
   окно торрента на телефоне висело на загрузке. Что на диске целиком, полоса в окне торрента берёт из `POST /homelab/pieces`
   (`{"hash":"…"}` → битовые карты готовых и начатых кусков, раз в 2 с); подробная карта кусков показывает окно плеера.
 
+- **Уведомления ntfy** (диалог «Кэш на диске» → «Уведомления ntfy»): сервер, топик (по умолчанию `ts`),
+  токен — хранится на сервере, в браузер не отдаётся; «Проверить» шлёт тестовое без сохранения. События (любое
+  можно выключить): скачано на диск; загрузка не может идти (нет места, лимит, никто не раздаёт — одно уведомление
+  на причину); кэш не помещается в лимит / мало места (уборщик не может уложиться: всё закреплено или смотрят — не
+  чаще раза в 6 ч); сервер запущен (выкл.). Шлётся JSON в корень сервера ntfy, как в `homelab-upstream.yml`.
+
 Режим выключен — поведение в точности как в upstream (это проверяет тест).
 
 API (с той же авторизацией, что и остальной API): `GET/POST /homelab/settings`
@@ -81,7 +90,9 @@ API (с той же авторизацией, что и остальной API):
 `{"action":"set","hash":"…","tracks":[{"name":"LostFilm","lang":"rus"},{"name":"HDrezka Studio","lang":"rus"}]}` —
 по приоритету, своя дорожка серий остаётся; `{"action":"file","hash":"…","path":"…","track":{"name":"…","lang":"…","index":0}}` —
 дорожка одной серии, с `"reset":true` — вернуть выбор торрента; `{"action":"files_clear","hash":"…"}`;
-`{"action":"clear","hash":"…"}` — всё; торрент должен быть загружен).
+`{"action":"clear","hash":"…"}` — всё; торрент должен быть загружен), `POST /homelab/ntfy` (`{"action":"get"}`;
+`{"action":"save","url":"…","topic":"…","token":"…","events":{…}}` — пустой `token` оставляет сохранённый,
+`"tokenClear":true` забывает; `{"action":"test", …}` — то же без сохранения).
 
 ## Как устроен форк: чтобы обновления upstream не затирали доработки
 
@@ -99,6 +110,7 @@ force-push не нужен).
 | «Скачать на диск»: очередь загрузок | `server/torr/homelab_download.go`, со стороны кэша — `torrstor/homelab_download.go` |
 | Серии на диске («4/8») | `server/torr/homelab_episodes.go` |
 | Аудиодорожка для плееров: разбор mkv, подмена байт в потоке | `server/torr/homelab_audio.go` |
+| Уведомления ntfy | `server/torr/storage/torrstor/homelab_ntfy.go` (шлют загрузки и уборщик) |
 | Тесты | `server/torr/storage/torrstor/homelab_test.go`, `server/torr/homelab_*_test.go`, `server/settings/homelab_test.go` |
 | Настройки, очередь загрузок, выбранные дорожки (хранятся отдельно от `BTSets`) | `server/settings/homelab.go`, `homelab_upstream.txt` (на каком релизе стоим) |
 | HTTP API | `server/web/api/homelab.go` |
@@ -112,10 +124,11 @@ force-push не нужен).
 | `server/torr/storage/torrstor/cache.go` | 6 | `Init` → `hlOnInit`; `Piece` → `hlPieceImpl`; `Close` → `hlOnClose` и `&& !hlKeep` у `RemoveCacheOnDrop`; `cleanPieces` → `hlOwnsEviction`; `GetState` → `hlAdjustState` (Readers, Filled и Pieces — окно upstream вокруг плеера) |
 | `server/torr/storage/torrstor/reader.go` | 1 | `getOffsetRange` → `hlReaderEnd`: с фоновой докачкой окно читателя — до конца файла |
 | `server/server.go` | 1 | `cleanCache` при старте не трогает постоянный кэш |
-| `server/torr/apihelper.go` | 2 | `RemTorrent` не удаляет постоянный кэш |
+| `server/torr/apihelper.go` | 3 | `RemTorrent` не удаляет постоянный кэш; `hlOnRemove` — снять загрузку, забыть дорожки |
 | `server/torr/stream.go` | 1 | `http.ServeContent` отдаёт `hlStreamReader` — mkv с одной выбранной аудиодорожкой |
 | `server/web/api/route.go` | 1 | `homelabRoutes(authorized)` |
 | `web/src/components/App/Sidebar.jsx` | 2 | импорт и пункт меню «Кэш на диске» |
+| `web/src/components/RemoveAll.jsx` | 3 | импорт, галочка «Также очистить кэш на диске», вызов через `homelabRemoveAll` |
 | `web/src/components/App/PWAFooter/index.jsx` | 2 | импорт и кнопка «Кэш» в нижней панели приложения на телефоне (PWA) |
 | `web/src/components/App/PWAFooter/style.js` | 1 | сетка панели на 6 кнопок вместо 5 |
 | `web/src/components/TorrentList/index.jsx` | 2 | сводка по кэшу первой строкой списка торрентов |

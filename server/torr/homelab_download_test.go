@@ -4,7 +4,10 @@ package torr
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+
+	"server/settings"
 )
 
 // Pieces of 10 bytes; a file of 25 bytes from offset 5 covers pieces 0..2 (5 + 10 + 10 bytes).
@@ -61,5 +64,24 @@ func TestHomelabIsVideo(t *testing.T) {
 		if hlIsVideo(name) {
 			t.Fatalf("%s must not be a video", name)
 		}
+	}
+}
+
+// Removing a torrent (one or "Remove all") takes its download off the queue.
+func TestHomelabOnRemoveDropsDownload(t *testing.T) {
+	hash := "0123456789abcdef0123456789abcdef01234567"
+	hlDlMu.Lock()
+	saved := hlDlJobs
+	hlDlJobs = []*hlDlJob{{HomelabDownloadJob: settings.HomelabDownloadJob{Hash: hash, WasPinned: true}, state: "queued"}}
+	hlDlMu.Unlock()
+	t.Cleanup(func() {
+		hlDlMu.Lock()
+		hlDlJobs = saved
+		hlDlMu.Unlock()
+	})
+
+	hlOnRemove(strings.ToUpper(hash))
+	if jobs := HomelabDownloads(); len(jobs) != 0 {
+		t.Fatalf("the job of a removed torrent must be gone: %+v", jobs)
 	}
 }

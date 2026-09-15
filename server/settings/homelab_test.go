@@ -61,3 +61,33 @@ func TestHomelabAudioJsonDBRoundTrip(t *testing.T) {
 		t.Fatal("cleared choice must be gone")
 	}
 }
+
+func TestHomelabNtfySettings(t *testing.T) {
+	n, err := NormalizeHomelabNtfy(HomelabNtfy{URL: " https://ntfy.example.org/torrserver/ "})
+	if err != nil || n.URL != "https://ntfy.example.org" || n.Topic != "torrserver" {
+		t.Fatalf("a URL with the topic: %+v %v", n, err)
+	}
+	if !n.Events["download_done"] || n.Events["started"] {
+		t.Fatalf("default events: %+v", n.Events)
+	}
+	if n, _ := NormalizeHomelabNtfy(HomelabNtfy{URL: "https://ntfy.example.org"}); n.Topic != "ts" {
+		t.Fatalf("default topic: %q", n.Topic)
+	}
+	if _, err := NormalizeHomelabNtfy(HomelabNtfy{URL: "ntfy.example.org"}); err == nil {
+		t.Fatal("an address without http(s) must be refused")
+	}
+
+	oldDB, oldReadOnly, oldCached := tdb, ReadOnly, homelabNtfyCached
+	tdb = &JsonDB{Path: t.TempDir(), filenameDelimiter: ".", filenameExtension: ".json", fileMode: fs.FileMode(0o666), xPathDelimeter: "/"}
+	ReadOnly, homelabNtfyCached = false, nil
+	t.Cleanup(func() { tdb, ReadOnly, homelabNtfyCached = oldDB, oldReadOnly, oldCached })
+
+	if err := SetHomelabNtfy(HomelabNtfy{URL: "https://ntfy.example.org", Topic: "tv", Token: "tk_x", Events: map[string]bool{"started": true}}); err != nil {
+		t.Fatal(err)
+	}
+	homelabNtfyCached = nil // as after a restart
+	got := GetHomelabNtfy()
+	if got.Topic != "tv" || got.Token != "tk_x" || !got.Events["started"] || !got.Events["disk"] {
+		t.Fatalf("round trip: %+v", got)
+	}
+}

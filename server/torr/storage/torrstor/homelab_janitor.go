@@ -216,13 +216,15 @@ func hlJanitorPass(now time.Time) (freed int64) {
 	if sets.LimitGB > 0 {
 		allowed = sets.LimitGB << 30
 	}
-	if free, _, ok := hlDiskStat(root); ok && free < hlMinFree {
+	byDisk := false // the budget is the free space guard, not the limit
+	free, _, diskOK := hlDiskStat(root)
+	if diskOK && free < hlMinFree {
 		byFree := total - (hlMinFree - free)
 		if byFree < 0 {
 			byFree = 0
 		}
 		if allowed < 0 || byFree < allowed {
-			allowed = byFree
+			allowed, byDisk = byFree, true
 		}
 	}
 	overBudget := allowed >= 0 && total > allowed
@@ -253,6 +255,20 @@ func hlJanitorPass(now time.Time) (freed int64) {
 	}
 	for hash, paths := range closed {
 		freed += hlRemoveClosed(hash, paths)
+	}
+	// everything evictable is gone and it still does not fit: the rest is pinned or being watched
+	if allowed >= 0 && total > allowed {
+		m := HomelabMessage{Event: HomelabEvDisk, Priority: 4, Tags: []string{"floppy_disk"}}
+		if byDisk {
+			m.Title = "TorrServer: на диске мало места"
+			m.Message = fmt.Sprintf("Свободно %s, а кэш %s — всё остальное закреплено или его смотрят. "+
+				"Открепите или удалите что-нибудь в «Кэше на диске».", hlGB(free), hlGB(total))
+		} else {
+			m.Title = "TorrServer: кэш не помещается в лимит"
+			m.Message = fmt.Sprintf("Кэш %s при лимите %s — всё остальное закреплено или его смотрят. "+
+				"Увеличьте лимит или открепите что-нибудь в «Кэше на диске».", hlGB(total), hlGB(allowed))
+		}
+		HomelabNotifyEvery("disk", 6*time.Hour, m)
 	}
 	if freed > 0 {
 		log.TLogln(fmt.Sprintf("homelab: janitor freed %d MB, cache now %d MB", freed>>20, total>>20))

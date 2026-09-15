@@ -7,6 +7,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -235,4 +236,111 @@ func SetHomelabAudio(hash string, choice *HomelabAudioChoice) error {
 		tdb.Set("Settings", "HomelabAudio", buf)
 	}
 	return nil
+}
+
+// HomelabNtfy — ntfy notifications of the fork (torrstor/homelab_ntfy.go). Stored apart from HomelabSets: the disk
+// cache dialog saves those as a whole and would drop these fields.
+type HomelabNtfy struct {
+	URL    string          `json:"url"`   // ntfy server, e.g. https://ntfy.example.org
+	Topic  string          `json:"topic"` // the channel, "ts" by default
+	Token  string          `json:"token,omitempty"`
+	Events map[string]bool `json:"events"` // event → on
+}
+
+// events of the notifications and whether they are on by default
+var HomelabNtfyEvents = map[string]bool{
+	"download_done":  true,  // a download to disk is complete
+	"download_error": true,  // a download can not run: no space, the limit, nobody seeds
+	"disk":           true,  // the cache does not fit into the limit / little free space on the disk
+	"started":        false, // the server has started (a deploy)
+}
+
+var (
+	homelabNtfyMu     sync.Mutex
+	homelabNtfyCached *HomelabNtfy
+)
+
+// GetHomelabNtfy — the ntfy settings, defaults filled in.
+func GetHomelabNtfy() HomelabNtfy {
+	homelabNtfyMu.Lock()
+	defer homelabNtfyMu.Unlock()
+	if homelabNtfyCached == nil {
+		n := HomelabNtfy{}
+		if tdb != nil {
+			if buf := tdb.Get("Settings", "HomelabNtfy"); len(buf) > 0 {
+				if err := json.Unmarshal(buf, &n); err != nil {
+					log.TLogln("Error unmarshal homelab ntfy:", err)
+				}
+			}
+		}
+		if n.Topic == "" {
+			n.Topic = "ts"
+		}
+		if tdb == nil {
+			return homelabNtfyWithDefaults(n)
+		}
+		homelabNtfyCached = &n
+	}
+	return homelabNtfyWithDefaults(*homelabNtfyCached)
+}
+
+func homelabNtfyWithDefaults(n HomelabNtfy) HomelabNtfy {
+	events := make(map[string]bool, len(HomelabNtfyEvents))
+	for ev, on := range HomelabNtfyEvents {
+		events[ev] = on
+		if v, ok := n.Events[ev]; ok {
+			events[ev] = v
+		}
+	}
+	n.Events = events
+	return n
+}
+
+// NormalizeHomelabNtfy validates the ntfy settings. A URL with a path ("https://ntfy.example.org/torrserver") is
+// split into the server and the topic; events get their defaults.
+func NormalizeHomelabNtfy(n HomelabNtfy) (HomelabNtfy, error) {
+	n.URL, n.Topic = strings.TrimSpace(n.URL), strings.Trim(strings.TrimSpace(n.Topic), "/")
+	if n.URL != "" {
+		u, err := url.Parse(n.URL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return n, errors.New("ntfy: the address must be http(s)://server")
+		}
+		if path := strings.Trim(u.Path, "/"); path != "" && n.Topic == "" {
+			n.Topic = path
+		}
+		n.URL = u.Scheme + "://" + u.Host
+	}
+	if n.Topic == "" {
+		n.Topic = "ts"
+	}
+	return homelabNtfyWithDefaults(n), nil
+}
+
+// SetHomelabNtfy validates and stores the ntfy settings.
+func SetHomelabNtfy(n HomelabNtfy) error {
+	if ReadOnly {
+		return errors.New("read-only mode")
+	}
+	n, err := NormalizeHomelabNtfy(n)
+	if err != nil {
+		return err
+	}
+	buf, err := json.Marshal(n)
+	if err != nil {
+		return err
+	}
+	homelabNtfyMu.Lock()
+	defer homelabNtfyMu.Unlock()
+	if tdb != nil {
+		tdb.Set("Settings", "HomelabNtfy", buf)
+	}
+	homelabNtfyCached = &n
+	return nil
+}
+
+// SetHomelabNtfyForTest replaces the ntfy settings without the DB (tests only).
+func SetHomelabNtfyForTest(n HomelabNtfy) {
+	homelabNtfyMu.Lock()
+	defer homelabNtfyMu.Unlock()
+	homelabNtfyCached = &n
 }

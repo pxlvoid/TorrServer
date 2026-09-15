@@ -14,7 +14,9 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
+	"path"
 	"sort"
 	"strings"
 	"sync"
@@ -28,6 +30,7 @@ import (
 	"server/torr/state"
 	"server/torr/storage/torrstor"
 	utils2 "server/utils"
+	"server/version"
 )
 
 const (
@@ -98,6 +101,9 @@ type hlDlJob struct {
 	cancel  context.CancelFunc
 	exited  chan struct{} // closed when the run of an active job returns
 	stopped bool
+
+	title, label string // for notifications: the torrent and what of it ("весь торрент", a file, "N файлов")
+	notified     string // error code already notified: one notification per reason, not every retry
 }
 
 var (
@@ -118,6 +124,10 @@ func HomelabDownloadsStart() {
 		}
 		hlDlMu.Unlock()
 		go hlDlLoop()
+		torrstor.HomelabNotify(torrstor.HomelabMessage{
+			Event: torrstor.HomelabEvStarted, Title: "TorrServer запущен", Message: version.Version, Priority: 2,
+			Tags: []string{"rocket"},
+		})
 	})
 }
 
@@ -250,6 +260,17 @@ func HomelabDownloadStop(hash string, files []int) {
 	}
 	if !wasPinned {
 		_ = torrstor.HomelabSetPinned(hash, false)
+	}
+}
+
+// hlOnRemove — hook at the start of RemTorrent (one torrent or "Remove all"): its download stops before the torrent
+// is closed (otherwise the job could open it again between the close and the removal from the DB), its audio
+// choice is forgotten. The disk cache stays, as for every removal in persistent mode.
+func hlOnRemove(hash string) {
+	hash = strings.ToLower(hash)
+	HomelabDownloadStop(hash, nil)
+	if _, ok := settings.GetHomelabAudio(hash); ok {
+		_ = settings.SetHomelabAudio(hash, nil)
 	}
 }
 
@@ -405,15 +426,36 @@ func hlDlLoop() {
 			hlDlRemoveLocked(job)
 			hlDlSaveLocked()
 			log.TLogln("homelab: download complete", job.Hash)
+			torrstor.HomelabNotify(torrstor.HomelabMessage{
+				Event:   torrstor.HomelabEvDownloadDone,
+				Title:   "Скачано на диск: " + job.title,
+				Message: fmt.Sprintf("%s, %s. Закреплено — уборщик не тронет.", job.label, hlGB(job.total)),
+				Tags:    []string{"arrow_down"},
+			})
 		case errors.Is(err, errHlRotate):
 			hlDlRemoveLocked(job)
 			hlDlJobs = append(hlDlJobs, job)
 			job.state = "queued"
 		case errors.Is(err, errHlReopen), errors.Is(err, errHlPaused), errors.Is(err, context.Canceled):
 			job.state = "queued"
+		case errors.As(err, &de) && de.Code == HomelabDlNotFound:
+			// the torrent is gone from the list: nothing to retry
+			hlDlRemoveLocked(job)
+			hlDlSaveLocked()
+			log.TLogln("homelab: download dropped, torrent is not in the list", job.Hash)
 		case errors.As(err, &de):
 			job.state, job.err, job.retryAt = "error", de, time.Now().Add(hlDlRetry)
 			log.TLogln("homelab: download", job.Hash, err)
+			if job.notified != de.Code {
+				job.notified = de.Code
+				torrstor.HomelabNotify(torrstor.HomelabMessage{
+					Event:    torrstor.HomelabEvDownloadError,
+					Title:    "TorrServer: загрузка стоит — " + hlDlTitle(job),
+					Message:  hlDlErrorText(de),
+					Priority: 4,
+					Tags:     []string{"warning"},
+				})
+			}
 		default:
 			job.state, job.err, job.retryAt = "error", &HomelabDlError{Code: HomelabDlFailed}, time.Now().Add(hlDlRetry)
 			log.TLogln("homelab: download", job.Hash, err)
@@ -479,6 +521,12 @@ func hlDlRun(ctx context.Context, job *hlDlJob) error {
 	if len(sel) == 0 {
 		return &HomelabDlError{Code: HomelabDlNoFiles}
 	}
+	hlDlMu.Lock()
+	job.title, job.label = t.Title, hlDlLabel(ids, sel)
+	if job.title == "" {
+		job.title = tt.Name()
+	}
+	hlDlMu.Unlock()
 	done, total := hlDlProgress(tt, sel, hlPieceComplete(tt))
 	if err := hlDlCheckSpace(job.Hash, total-done); err != nil {
 		return err
@@ -576,6 +624,50 @@ func hlDlRun(ctx context.Context, job *hlDlJob) error {
 }
 
 // helpers
+
+// hlDlLabel — what a job downloads, for a notification.
+func hlDlLabel(ids []int, sel []hlDlFile) string {
+	switch {
+	case len(ids) == 0:
+		return "весь торрент"
+	case len(sel) == 1:
+		return path.Base(sel[0].Path())
+	default:
+		return fmt.Sprintf("файлов: %d", len(sel))
+	}
+}
+
+// hlDlTitle — the torrent of a job for a notification (the job may not have run yet).
+func hlDlTitle(job *hlDlJob) string {
+	if job.title != "" {
+		return job.title
+	}
+	if db := GetTorrentDB(metainfo.NewHashFromHex(job.Hash)); db != nil && db.Title != "" {
+		return db.Title
+	}
+	return job.Hash
+}
+
+// hlDlErrorText — why a job can not run, in words (the web UI has its own translations of the codes).
+func hlDlErrorText(e *HomelabDlError) string {
+	switch e.Code {
+	case HomelabDlLimit:
+		return fmt.Sprintf("Не влезает в лимит кэша: нужно ещё %s, рядом с закреплённым осталось %s. "+
+			"Увеличьте лимит или открепите что-нибудь.", hlGB(e.Need), hlGB(e.Avail))
+	case HomelabDlDisk:
+		return fmt.Sprintf("Не хватает места на диске: нужно ещё %s, доступно %s.", hlGB(e.Need), hlGB(e.Avail))
+	case HomelabDlDiskFull:
+		return "На диске кончилось место — загрузка остановлена. Повторю через 5 минут."
+	case HomelabDlNoInfo:
+		return "Нет данных о торренте — похоже, его никто не раздаёт. Повторю через 5 минут."
+	default:
+		return fmt.Sprintf("Не удалось скачать (%s). Повторю через 5 минут.", e.Code)
+	}
+}
+
+func hlGB(n int64) string {
+	return fmt.Sprintf("%.1f ГБ", float64(n)/(1<<30))
+}
 
 type hlDlFile struct {
 	*torrent.File

@@ -8,6 +8,7 @@ import { torrentsHost } from 'utils/Hosts'
 import { useTranslation } from 'react-i18next'
 
 import UnsafeButton from './UnsafeButton'
+import { HomelabWipeOption, homelabRemoveAll } from './Homelab/WipeOption' // homelab
 
 const fnRemoveAll = () => {
   fetch(torrentsHost(), {
@@ -38,6 +39,7 @@ export default function RemoveAll({ isOffline, isLoading }) {
 
       <Dialog open={open} onClose={closeDialog}>
         <DialogTitle>{t('DeleteTorrents?')}</DialogTitle>
+        <HomelabWipeOption /* homelab */ />
         <DialogActions>
           <Button variant='outlined' onClick={closeDialog} color='secondary'>
             {t('Cancel')}
@@ -48,7 +50,7 @@ export default function RemoveAll({ isOffline, isLoading }) {
             startIcon={<DeleteIcon />}
             variant='contained'
             onClick={() => {
-              fnRemoveAll()
+              homelabRemoveAll(fnRemoveAll) // homelab: optionally clears the unpinned disk cache too
               closeDialog()
             }}
             color='secondary'

@@ -32,6 +32,7 @@ import useOnStandaloneAppOutsideClick from 'utils/useOnStandaloneAppOutsideClick
 
 import UnsafeButton from '../UnsafeButton'
 import { downloadErrorText, homelabDownloadAction } from './downloads'
+import HomelabNtfySettings from './NtfySettings'
 import { parseTitle } from './parseTitle'
 import { publishHomelabCache } from './store'
 import {
@@ -408,6 +409,10 @@ export default function DiskCacheDialog({ handleClose }) {
                 )}
               </Section>
             )}
+
+            <Section>
+              <HomelabNtfySettings dark={dark} />
+            </Section>
 
             {(message || error) && (
               <Section>

@@ -32,6 +32,10 @@ type HomelabItem struct {
 	Pinned      bool   `json:"pinned"`      // never evicted by the janitor
 	Open        bool   `json:"open"`        // the torrent is loaded
 	Playing     bool   `json:"playing"`     // someone reads it right now
+
+	// title and poster remembered from the TorrServer list (HomelabSetInfo), for a torrent no longer in it
+	SavedTitle  string `json:"-"`
+	SavedPoster string `json:"-"`
 }
 
 // HomelabUsage — the disk cache as a whole.
@@ -100,6 +104,7 @@ func HomelabList() ([]HomelabItem, HomelabUsage) {
 			h.mu.Lock()
 			it.Name, it.TotalLength, it.PieceCount = h.meta.Name, h.meta.TotalLength, h.meta.PieceCount
 			it.LastAccess, it.Pinned = h.meta.LastAccess, h.meta.Pinned
+			it.SavedTitle, it.SavedPoster = h.meta.Title, h.meta.Poster
 			h.mu.Unlock()
 			it.Open = true
 			it.Playing = hlPlayers(h.c) > 0
@@ -114,6 +119,7 @@ func HomelabList() ([]HomelabItem, HomelabUsage) {
 			}
 			if meta, _ := hlReadMeta(dir); meta != nil {
 				it.Name, it.TotalLength, it.PieceCount, it.Pinned = meta.Name, meta.TotalLength, meta.PieceCount, meta.Pinned
+				it.SavedTitle, it.SavedPoster = meta.Title, meta.Poster
 				if meta.LastAccess > it.LastAccess {
 					it.LastAccess = meta.LastAccess
 				}
@@ -195,6 +201,34 @@ func HomelabSetPinned(hash string, pinned bool) error {
 	}
 	meta.Pinned = pinned
 	return hlWriteMeta(dir, meta)
+}
+
+// HomelabSetInfo remembers the title and poster of a torrent in its cache meta (only if they changed).
+func HomelabSetInfo(hash, title, poster string) {
+	if !hlReady() || !hlIsHash(hash) {
+		return
+	}
+	if h := hlByHashGet(hash); h != nil {
+		h.mu.Lock()
+		if h.meta.Title != title || h.meta.Poster != poster {
+			h.meta.Title, h.meta.Poster = title, poster
+			h.dirty = true // written by the next flush (janitor, close)
+		}
+		h.mu.Unlock()
+		return
+	}
+	hlMu.Lock()
+	defer hlMu.Unlock()
+	if hlIsOpenLocked(hash) {
+		return
+	}
+	dir := filepath.Join(hlRoot(), hash)
+	meta, _ := hlReadMeta(dir)
+	if meta == nil || meta.Title == title && meta.Poster == poster {
+		return
+	}
+	meta.Title, meta.Poster = title, poster
+	_ = hlWriteMeta(dir, meta)
 }
 
 // HomelabClear frees everything that is not pinned (a playing torrent keeps its reader window).
