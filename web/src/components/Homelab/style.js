@@ -180,6 +180,44 @@ export const Info = styled.div`
     margin-top: 3px;
   }
 
+  .card-open {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .card-open:hover {
+    text-decoration: underline;
+  }
+
+  .card-toggle {
+    display: block;
+    margin-top: 6px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+    opacity: 0.8;
+    text-decoration: underline dotted;
+    cursor: pointer;
+  }
+
+  .card-episodes {
+    margin-top: 8px;
+  }
+
+  .card-episodes-wait {
+    margin-top: 8px;
+    font-size: 12px;
+    opacity: 0.6;
+  }
+
   .card-download-error {
     color: #e57373;
   }
@@ -962,12 +1000,6 @@ export const DownloadBox = styled.div`
         margin-bottom: 10px;
       }
 
-      .dl-episodes-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
-        gap: 6px;
-      }
-
       @keyframes dl-pulse {
         50% {
           opacity: 0.35;
@@ -1081,6 +1113,13 @@ export const StreamsBox = styled.div`
       }
     `
   }}
+`
+
+// the grid of episode tiles (EpisodeGrid)
+export const EpisodeGridBox = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  gap: 6px;
 `
 
 // an episode tile: filled — on disk, filled up to the share on disk — downloading or partly cached,

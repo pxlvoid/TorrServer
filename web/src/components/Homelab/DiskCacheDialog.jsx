@@ -31,8 +31,10 @@ import { humanizeSize, humanizeSpeed } from 'utils/Utils'
 import useOnStandaloneAppOutsideClick from 'utils/useOnStandaloneAppOutsideClick'
 
 import UnsafeButton from '../UnsafeButton'
-import { downloadErrorText, homelabDownloadAction } from './downloads'
+import { downloadErrorText, homelabDownloadAction, jobHasFile, useHomelabDownload } from './downloads'
+import EpisodeGrid, { currentEpisode, episodesOf, useTimeLeft } from './EpisodeGrid'
 import HomelabNtfySettings from './NtfySettings'
+import HomelabTorrentInfoDialog from './TorrentInfoDialog'
 import { parseTitle } from './parseTitle'
 import { publishHomelabCache } from './store'
 import {
@@ -83,17 +85,50 @@ function useRelativeTime() {
   )
 }
 
-function downloadLine(t, download) {
-  if (!download) return null
-  if (download.state === 'error') return downloadErrorText(t, download)
-  if (download.state === 'queued') return t('Homelab.DownloadQueued')
-  return [t('Homelab.Downloading'), download.speed > 0 && humanizeSpeed(download.speed)].filter(Boolean).join(' · ')
+// the download of a torrent: which episode, how fast, how long is left, how many more are queued
+function CardDownload({ hash, download }) {
+  const { t } = useTranslation()
+  const timeLeft = useTimeLeft()
+  const data = useHomelabDownload(hash) // shared with the episode grid: the files and what of them is on disk
+  const job = data?.job || download
+  if (!job) return null
+  if (job.state === 'error') {
+    return <div className='card-download card-download-error'>↓ {downloadErrorText(t, job)}</div>
+  }
+  if (job.state === 'queued') return <div className='card-download'>↓ {t('Homelab.DownloadQueued')}</div>
+
+  const episodes = episodesOf(data?.files)
+  const current = episodes.length > 1 ? currentEpisode(job, episodes) : null
+  const more = episodes.filter(e => e !== current && jobHasFile(job, e.id) && e.done < e.length).length
+  const parts = [
+    current ? t('Homelab.DownloadingEpisode', { n: current.label }) : t('Homelab.Downloading'),
+    job.speed > 0 && humanizeSpeed(job.speed),
+    job.speed > 0 && job.total > job.done && timeLeft((job.total - job.done) / job.speed),
+    more > 0 && t('Homelab.DownloadQueuedMore', { count: more }),
+  ]
+  return <div className='card-download'>↓ {parts.filter(Boolean).join(' · ')}</div>
 }
 
-function CacheCard({ item, download, confirming, busy, dark, onPin, onRemove, onDownload, onStop }) {
+// the episodes of a series on disk — a grid, a click queues an episode or takes it off the queue
+function CardEpisodes({ hash, dark }) {
+  const { t } = useTranslation()
+  const data = useHomelabDownload(hash)
+  const episodes = episodesOf(data?.files)
+  if (!data) return <div className='card-episodes-wait'>{t('Homelab.EpisodesLoading')}</div>
+  if (!episodes.length) return null
+  return (
+    <div className='card-episodes'>
+      <EpisodeGrid hash={hash} job={data.job} episodes={episodes} dark={dark} />
+    </div>
+  )
+}
+
+function CacheCard({ item, download, confirming, busy, dark, onPin, onRemove, onDownload, onStop, onOpen }) {
   const { t } = useTranslation()
   const relativeTime = useRelativeTime()
   const [posterFailed, setPosterFailed] = useState(false)
+  const [episodesOpen, setEpisodesOpen] = useState(false)
+  const series = item.episodes > 1
   const fullName = item.title || item.name || item.hash
   const { title, subtitle } = parseTitle(fullName)
   const percent = item.totalLength ? (item.size / item.totalLength) * 100 : null
@@ -113,7 +148,7 @@ function CacheCard({ item, download, confirming, busy, dark, onPin, onRemove, on
 
   return (
     <Card pinned={item.pinned} dark={dark}>
-      <Poster>
+      <Poster onClick={() => onOpen(item)} title={t('Homelab.OpenInfo')} style={{ cursor: 'pointer' }}>
         {item.poster && !posterFailed ? (
           <img src={item.poster} alt='' loading='lazy' onError={() => setPosterFailed(true)} />
         ) : (
@@ -127,16 +162,25 @@ function CacheCard({ item, download, confirming, busy, dark, onPin, onRemove, on
       </Poster>
 
       <Info title={fullName}>
-        <div className='card-title'>{title}</div>
+        <button
+          type='button'
+          className='card-title card-open'
+          onClick={() => onOpen(item)}
+          title={t('Homelab.OpenInfo')}
+        >
+          {title}
+        </button>
         {subtitle && <div className='card-subtitle'>{subtitle}</div>}
         <div className='card-stats'>
           {percent !== null && <Bar thin dark={dark} value={percent} style={{ marginBottom: 6 }} />}
           {stats.join(' · ')}
-          {download && (
-            <div className={download.state === 'error' ? 'card-download card-download-error' : 'card-download'}>
-              ↓ {downloadLine(t, download)}
-            </div>
+          {download && <CardDownload hash={item.hash} download={download} />}
+          {series && (
+            <button type='button' className='card-toggle' onClick={() => setEpisodesOpen(!episodesOpen)}>
+              {episodesOpen ? t('Homelab.EpisodesHide') : t('Homelab.EpisodesShow')}
+            </button>
           )}
+          {series && episodesOpen && <CardEpisodes hash={item.hash} dark={dark} />}
         </div>
       </Info>
 
@@ -196,6 +240,7 @@ export default function DiskCacheDialog({ handleClose }) {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [confirmHash, setConfirmHash] = useState('') // playing torrent: the second click removes
+  const [infoHash, setInfoHash] = useState('') // the standard "Torrent info" window over this one
 
   useEffect(() => {
     if (!confirmHash) return undefined
@@ -440,6 +485,7 @@ export default function DiskCacheDialog({ handleClose }) {
                     onRemove={removeItem}
                     onDownload={it => downloadItem(it, 'start')}
                     onStop={it => downloadItem(it, 'stop')}
+                    onOpen={it => setInfoHash(it.hash)}
                   />
                 ))}
               </CardList>
@@ -464,6 +510,7 @@ export default function DiskCacheDialog({ handleClose }) {
           {t('Homelab.Close')}
         </Button>
       </DialogActions>
+      {infoHash && <HomelabTorrentInfoDialog hash={infoHash} handleClose={() => setInfoHash('')} />}
     </StyledDialog>
   )
 }

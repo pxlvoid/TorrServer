@@ -31,6 +31,7 @@ import (
 
 	"server/log"
 	"server/settings"
+	"server/torr/storage/torrstor"
 )
 
 const (
@@ -181,6 +182,9 @@ func hlHeaderWait(t *Torrent, file *torrent.File, key string) (*hlMkvHeader, boo
 	if r == nil {
 		return nil, false
 	}
+	// not a player: not "watching", not the "player buffer" (like a download reader, homelab_download.go)
+	torrstor.HomelabMarkDownloadReader(r)
+	defer torrstor.HomelabUnmarkDownloadReader(r)
 	defer t.CloseReader(r) // also ends a read still waiting for data
 	done := make(chan struct{})
 	go func() {

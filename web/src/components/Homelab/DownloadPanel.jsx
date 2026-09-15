@@ -1,79 +1,26 @@
 // homelab: "Download to disk" in the torrent details, under the disk timeline (MiniCache): the job of the
 // torrent — progress, speed, time left, why it can not run — and for a series a grid of episodes: what is
 // on disk and what is downloading; a click queues an episode or takes it off the queue.
-import { Button, Tooltip } from '@material-ui/core'
+import { Button } from '@material-ui/core'
 import GetAppIcon from '@material-ui/icons/GetApp'
 import StopIcon from '@material-ui/icons/Stop'
 import { useTranslation } from 'react-i18next'
 import { humanizeSize, humanizeSpeed } from 'utils/Utils'
 
 import './i18n'
-import { downloadErrorText, homelabDownloadAction, jobHasFile, useHomelabDownload } from './downloads'
-import { labelEpisodes, VIDEO_EXT } from './episodes'
-import { DownloadBox, EpisodeChip, ProgressBar } from './style'
-
-// video files with their episode labels
-const episodesOf = files => labelEpisodes(files.filter(f => VIDEO_EXT.test(f.path)))
-
-function useTimeLeft() {
-  const { t } = useTranslation()
-  return seconds => {
-    if (!Number.isFinite(seconds) || seconds <= 0) return ''
-    const minutes = Math.max(1, Math.round(seconds / 60))
-    const time =
-      minutes < 60
-        ? t('Homelab.Minutes', { count: minutes })
-        : t('Homelab.HoursMinutes', { h: Math.floor(minutes / 60), m: minutes % 60 })
-    return t('Homelab.TimeLeft', { time })
-  }
-}
+import { downloadErrorText, homelabDownloadAction, useHomelabDownload } from './downloads'
+import EpisodeGrid, { episodesOf, useTimeLeft } from './EpisodeGrid'
+import { DownloadBox, ProgressBar } from './style'
 
 function Episodes({ hash, job, episodes, dark }) {
   const { t } = useTranslation()
-  // the server takes the files of a job in order: the first unfinished one is being downloaded
-  const current = job?.state === 'active' ? episodes.find(e => jobHasFile(job, e.id) && e.done < e.length) : null
   const onDisk = episodes.filter(e => e.done >= e.length).length
-
   return (
     <div className='dl-episodes'>
       <div className='dl-episodes-head'>
         {t('Homelab.EpisodesOnDisk')}: <b>{t('Homelab.EpisodesOf', { done: onDisk, count: episodes.length })}</b>
       </div>
-      <div className='dl-episodes-grid'>
-        {episodes.map(e => {
-          const percent = e.length ? Math.floor((e.done / e.length) * 100) : 0
-          const complete = e.done >= e.length
-          const queued = jobHasFile(job, e.id) && !complete
-          const state = complete ? 'done' : e === current ? 'active' : queued ? 'queued' : 'none'
-          const hint = complete
-            ? t('Homelab.EpisodeOnDisk')
-            : queued
-            ? t('Homelab.EpisodeClickStop')
-            : t('Homelab.EpisodeClickDownload')
-          const title = [
-            t('Homelab.Episode', { n: e.label }),
-            humanizeSize(e.length),
-            t('Homelab.PercentOnDisk', { percent }),
-          ].join(' · ')
-          return (
-            <Tooltip key={e.id} title={`${title}. ${hint}`}>
-              {/* span: a disabled button gets no mouse events, the tooltip still has to work */}
-              <span>
-                <EpisodeChip
-                  type='button'
-                  dark={dark}
-                  state={state}
-                  percent={percent}
-                  disabled={complete}
-                  onClick={() => homelabDownloadAction(hash, queued ? 'stop' : 'start', [e.id])}
-                >
-                  {e.label}
-                </EpisodeChip>
-              </span>
-            </Tooltip>
-          )
-        })}
-      </div>
+      <EpisodeGrid hash={hash} job={job} episodes={episodes} dark={dark} />
     </div>
   )
 }

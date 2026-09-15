@@ -308,8 +308,8 @@ func HomelabDownloads() []HomelabDownload {
 	return jobs
 }
 
-// HomelabDownloadStatus — the job of a torrent (nil if none) and its files with what is on disk
-// (empty if the torrent is not loaded).
+// HomelabDownloadStatus — the job of a torrent (nil if none) and its files with what is on disk (for a torrent that
+// is not loaded — from its record in the TorrServer list; empty if unknown).
 func HomelabDownloadStatus(hash string) (*HomelabDownload, []HomelabFileState) {
 	hash = strings.ToLower(hash)
 	var job *HomelabDownload
@@ -326,6 +326,11 @@ func HomelabDownloadStatus(hash string) (*HomelabDownload, []HomelabFileState) {
 		pl := tt.Info().PieceLength
 		for _, f := range hlDlSelect(tt, nil) {
 			files = append(files, HomelabFileState{Id: f.id, Path: f.Path(), Length: f.Length(), Done: hlFileDone(f.File, complete, pl)})
+		}
+	}
+	if len(files) == 0 { // not loaded: from its record in the TorrServer list and the pieces on disk
+		if disk := HomelabDiskFiles(hash); disk != nil {
+			files = disk
 		}
 	}
 	return job, files
