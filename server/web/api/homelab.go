@@ -23,6 +23,7 @@ func homelabRoutes(authorized gin.IRouter) {
 	authorized.POST("/homelab/audio", homelabAudio)
 	authorized.POST("/homelab/pieces", homelabPieces)
 	authorized.POST("/homelab/ntfy", homelabNtfy)
+	authorized.GET("/homelab/streams", homelabStreams)
 	torrstor.HomelabStartJanitor()
 	torr.HomelabDownloadsStart()
 }
@@ -320,6 +321,11 @@ func homelabNtfy(c *gin.Context) {
 	}
 	n := sets.GetHomelabNtfy()
 	c.JSON(http.StatusOK, homelabNtfyResp{URL: n.URL, Topic: n.Topic, TokenSet: n.Token != "", Events: n.Events})
+}
+
+// homelabStreams — who is watching now (torr/homelab_streams.go).
+func homelabStreams(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"clients": torr.HomelabStreams()})
 }
 
 func homelabGetSettings(c *gin.Context) {

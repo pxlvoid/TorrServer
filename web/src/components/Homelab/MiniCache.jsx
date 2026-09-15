@@ -2,7 +2,7 @@
 // The upstream mini snake piles all cached pieces into one block — fine for a ring cache of CacheSize,
 // meaningless for a persistent cache of many gigabytes. In persistent mode it is replaced by a timeline
 // of the whole torrent: what is on disk, where the player is and its download window — and below it
-// "download to disk" of the whole torrent (DownloadPanel). What is on disk comes from /homelab/pieces (a compact
+// who is watching it (StreamsPanel) and "download to disk" of the whole torrent (DownloadPanel). What is on disk comes from /homelab/pieces (a compact
 // bitset every couple of seconds): the /cache state polled ten times a second carries only the pieces around the
 // players, so the detailed piece map (button below) shows the player window, as upstream.
 import axios from 'axios'
@@ -14,6 +14,7 @@ import { humanizeSize } from 'utils/Utils'
 
 import './i18n'
 import HomelabDownloadPanel from './DownloadPanel'
+import HomelabStreamsPanel from './StreamsPanel'
 import { useHomelabCache } from './store'
 import { Timeline } from './style'
 
@@ -158,12 +159,20 @@ function DiskTimeline({ cache, totalLength }) {
 export default function HomelabMiniCache({ cache, children }) {
   const data = useHomelabCache()
   const { isDarkMode } = useContext(DarkModeContext)
-  if (!data?.usage?.enabled || !cache?.PiecesCount) return children
-  const item = data.items?.find(it => it.hash === cache.Hash)
   // one element: CacheSection is a three-row grid (header, this, button) — a fragment would add a row
+  if (!data?.usage?.enabled || !cache?.PiecesCount) {
+    return (
+      <div>
+        {children}
+        <HomelabStreamsPanel hash={cache?.Hash} dark={isDarkMode} />
+      </div>
+    )
+  }
+  const item = data.items?.find(it => it.hash === cache.Hash)
   return (
     <div>
       <DiskTimeline cache={cache} totalLength={item?.totalLength} />
+      <HomelabStreamsPanel hash={cache.Hash} dark={isDarkMode} />
       <HomelabDownloadPanel hash={cache.Hash} dark={isDarkMode} />
     </div>
   )

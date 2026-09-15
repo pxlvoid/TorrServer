@@ -162,7 +162,7 @@ func (t *Torrent) Stream(fileID int, req *http.Request, resp http.ResponseWriter
 	// }
 	// http.ServeContent(wrappedResp, req, file.Path(), time.Unix(t.Timestamp, 0), reader)
 
-	http.ServeContent(resp, req, file.Path(), time.Unix(t.Timestamp, 0), hlStreamReader(t, file, reader, resp)) // homelab: one audio track
+	http.ServeContent(resp, req, file.Path(), time.Unix(t.Timestamp, 0), hlStreamReader(t, file, reader, req, resp)) // homelab: one audio track, who is watching
 
 	if sets.BTsets.EnableDebug {
 		if clerr != nil {

@@ -9,7 +9,8 @@ package torr
 // in the MKV header their TrackType is rewritten to "control" (0x20), which demuxers skip — FFmpeg ignores
 // the blocks of such tracks — and FlagDefault is moved to the chosen track where the element exists.
 // Only bytes of existing values change, never the size of anything: offsets, Cues and range requests stay as
-// they are, so seeking works as before. Hooked into Torrent.Stream (the file is served through hlStreamReader).
+// they are, so seeking works as before. Hooked into Torrent.Stream (the file is served through hlStreamReader,
+// homelab_streams.go).
 
 import (
 	"errors"
@@ -93,26 +94,26 @@ func hlIsMkv(path string) bool {
 	return strings.HasSuffix(p, ".mkv") || strings.HasSuffix(p, ".webm")
 }
 
-// hlStreamReader — the reader Torrent.Stream serves: with a chosen audio track, an MKV with the other audio
-// tracks hidden; otherwise r itself.
-func hlStreamReader(t *Torrent, file *torrent.File, r io.ReadSeeker, resp http.ResponseWriter) io.ReadSeeker {
+// hlAudioPatches — with an audio track chosen for the torrent, the patches of this MKV that hide the other audio
+// tracks (the ETag of the response changes with them); nil otherwise. Leaves r at the start of the file.
+func hlAudioPatches(t *Torrent, file *torrent.File, r io.ReadSeeker, resp http.ResponseWriter) []hlPatch {
 	choice, ok := settings.GetHomelabAudio(t.Hash().HexString())
 	if !ok || !hlIsMkv(file.Path()) {
-		return r
+		return nil
 	}
 	hdr := hlHeaderOf(t.Hash().HexString()+"/"+file.Path(), r)
 	if _, err := r.Seek(0, io.SeekStart); err != nil {
-		return r
+		return nil
 	}
 	patches, chosen := hdr.patches(choice, file.Path())
 	if len(patches) == 0 {
-		return r
+		return nil
 	}
 	// another content than the plain file: its own ETag, so nothing mixes them up in a cache
 	if etag := resp.Header().Get("ETag"); etag != "" {
 		resp.Header().Set("ETag", httptoo.EncodeQuotedString(fmt.Sprintf("%s-a%d", strings.Trim(etag, `"`), chosen)))
 	}
-	return &hlPatchReader{ReadSeeker: r, patches: patches}
+	return patches
 }
 
 // HomelabAudioFile — a video MKV of the torrent: its audio tracks and which of them the choice serves.
@@ -317,11 +318,12 @@ func hlUint(v uint64, n int) []byte {
 	return buf
 }
 
-// hlPatchReader serves the file with the patched bytes.
+// hlPatchReader serves the file with the patched bytes and counts what the client gets (homelab_streams.go).
 type hlPatchReader struct {
 	io.ReadSeeker
 	off     int64
 	patches []hlPatch
+	stream  *hlStream // nil — not counted
 }
 
 func (p *hlPatchReader) Seek(offset int64, whence int) (int64, error) {
@@ -336,6 +338,9 @@ func (p *hlPatchReader) Read(b []byte) (int, error) {
 	n, err := p.ReadSeeker.Read(b)
 	if n > 0 {
 		hlApply(b[:n], p.off, p.patches)
+		if p.stream != nil {
+			p.stream.read(p.off, n)
+		}
 		p.off += int64(n)
 	}
 	return n, err

@@ -1,22 +1,36 @@
 // homelab: "on disk" badge on a torrent card poster (hook in TorrentCard): share of the torrent in the
 // disk cache — for a series episodes completely on disk, "3/8" — (with an arrow while it is being downloaded),
-// and a star if it is pinned. Nothing on disk — nothing shown.
+// and a star if it is pinned; "▶ 18 Mbit/s" at the bottom while someone watches it (streams.js).
+// Nothing on disk and nobody watching — nothing shown.
 import GetAppIcon from '@material-ui/icons/GetApp'
 import StorageIcon from '@material-ui/icons/Storage'
 import StarIcon from '@material-ui/icons/Star'
 import { useTranslation } from 'react-i18next'
-import { humanizeSize } from 'utils/Utils'
+import { humanizeSize, humanizeSpeed } from 'utils/Utils'
 
 import './i18n'
 import { useHomelabCache } from './store'
-import { PinMark, PosterBadge } from './style'
+import { useTorrentStreams } from './streams'
+import { LiveMark, PinMark, PosterBadge } from './style'
+
+// who watches the torrent: "▶ 18 Mbit/s", "▶ 2 · 36 Mbit/s", "▶ paused"
+function Live({ hash }) {
+  const { t } = useTranslation()
+  const clients = useTorrentStreams(hash).filter(c => !c.ended)
+  if (!clients.length) return null
+  const speed = clients.reduce((sum, c) => sum + c.speed, 0)
+  const label = [clients.length > 1 && clients.length, speed > 0 ? humanizeSpeed(speed) : t('Homelab.StreamPaused')]
+    .filter(Boolean)
+    .join(' · ')
+  return <LiveMark title={clients.map(c => c.device).join(', ')}>▶ {label}</LiveMark>
+}
 
 export default function HomelabCacheBadge({ hash }) {
   const { t } = useTranslation()
   const data = useHomelabCache()
   const item = data?.items?.find(it => it.hash === hash)
   const download = data?.downloads?.find(d => d.hash === hash)
-  if (!item || (!item.size && !download)) return null
+  if (!item || (!item.size && !download)) return <Live hash={hash} />
 
   const percent = item.totalLength ? Math.min(100, (item.size / item.totalLength) * 100) : null
   const series = item.episodes > 1
@@ -57,6 +71,7 @@ export default function HomelabCacheBadge({ hash }) {
           </div>
         )}
       </PosterBadge>
+      <Live hash={hash} />
     </>
   )
 }

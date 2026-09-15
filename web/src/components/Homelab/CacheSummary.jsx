@@ -1,18 +1,21 @@
 // homelab: disk cache summary above the torrent list (hook in TorrentList). Click opens the disk cache dialog.
+// Also who is watching now: clients of the stream with the device, what, how fast (streams.js).
 import StorageIcon from '@material-ui/icons/Storage'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { humanizeSize } from 'utils/Utils'
+import { humanizeSize, humanizeSpeed } from 'utils/Utils'
 
 import './i18n'
 import DiskCacheDialog from './DiskCacheDialog'
 import { parseTitle } from './parseTitle'
 import { useHomelabCache } from './store'
+import { episodeOf, useHomelabStreams } from './streams'
 import { Summary, SummaryBar } from './style'
 
 export default function HomelabCacheSummary() {
   const { t } = useTranslation()
   const data = useHomelabCache()
+  const clients = useHomelabStreams()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   if (!data?.usage?.ready) return null
@@ -24,6 +27,17 @@ export default function HomelabCacheSummary() {
   }
   const active = downloads.find(d => d.state === 'active')
   const used = humanizeSize(usage.used) || '0'
+  const watching = (clients || []).filter(c => !c.ended)
+  const totalSpeed = watching.reduce((sum, c) => sum + c.speed, 0)
+  const clientLine = c =>
+    [
+      `${c.device} — ${parseTitle(c.title || c.path).title}`,
+      episodeOf(c.path),
+      c.active ? humanizeSpeed(c.speed) : t('Homelab.StreamPaused'),
+      c.position > 0 && `${Math.round(c.position * 100)}%`,
+    ]
+      .filter(Boolean)
+      .join(' · ')
 
   return (
     <>
@@ -47,7 +61,20 @@ export default function HomelabCacheSummary() {
             <SummaryBar value={(usage.used / usage.limit) * 100} />
           </div>
         )}
-        {playing.length > 0 && (
+        {clients && watching.length > 0 && (
+          <>
+            <div className='summary-playing'>
+              ▶ {t('Homelab.StreamsWatching', { count: watching.length })}
+              {totalSpeed > 0 && ` · ${humanizeSpeed(totalSpeed)}`}
+            </div>
+            {watching.map(c => (
+              <div key={`${c.ip}|${c.ua}|${c.hash}|${c.path}`} className='summary-playing summary-client'>
+                {clientLine(c)}
+              </div>
+            ))}
+          </>
+        )}
+        {!clients && playing.length > 0 && (
           <div className='summary-playing'>
             ▶ {t('Homelab.Playing')}:{' '}
             {playing.map(item => parseTitle(item.title || item.name || item.hash).title).join(', ')}

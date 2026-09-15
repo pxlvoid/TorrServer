@@ -247,6 +247,11 @@ export const Summary = styled.div`
       text-overflow: ellipsis;
     }
 
+    .summary-client {
+      padding-left: 16px;
+      opacity: 0.8;
+    }
+
     @media (max-width: 700px) {
       padding: 10px 12px;
       grid-template-columns: auto 1fr;
@@ -336,6 +341,32 @@ export const PosterBadge = styled.div`
     .badge-bar {
       height: 3px;
     }
+  }
+`
+
+// someone watches the torrent: a pill at the bottom left of the poster, above the disk bar
+export const LiveMark = styled.div`
+  position: absolute;
+  left: 4px;
+  bottom: 9px;
+  max-width: calc(100% - 8px);
+  padding: 3px 7px;
+  border-radius: 10px;
+  background: #d32f2f;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+
+  @media (max-width: 770px) {
+    bottom: 6px;
+    left: 3px;
+    padding: 2px 5px;
+    font-size: 9px;
   }
 `
 
@@ -588,6 +619,69 @@ export const ProgressBar = styled.div`
         to {
           background-position: 16px 0;
         }
+      }
+    `
+  }}
+`
+
+// who is watching the torrent (StreamsPanel): cards like the download one
+export const StreamsBox = styled.div`
+  ${({ dark }) => {
+    const c = dlColors(dark)
+    return css`
+      margin: 16px 0 8px;
+      padding: 14px 16px;
+      border-radius: 6px;
+      background: ${c.card};
+
+      .streams-title {
+        font-size: 16px;
+        font-weight: 500;
+        margin-bottom: 10px;
+      }
+
+      .stream + .stream {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid ${c.track};
+      }
+
+      .stream-ended {
+        opacity: 0.55;
+      }
+
+      .stream-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        font-size: 14px;
+      }
+
+      .stream-speed {
+        font-size: 13px;
+        opacity: 0.8;
+        white-space: nowrap;
+      }
+
+      .stream-active {
+        opacity: 1;
+        font-weight: 600;
+      }
+
+      .stream-file {
+        margin: 2px 0 6px;
+        font-size: 12px;
+        opacity: 0.85;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .stream-meta {
+        margin-top: 6px;
+        font-size: 12px;
+        opacity: 0.8;
       }
     `
   }}
