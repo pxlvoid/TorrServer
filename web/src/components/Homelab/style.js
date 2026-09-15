@@ -192,6 +192,249 @@ export const Actions = styled.div`
   margin: -6px -6px -6px 0;
 `
 
+// ---------- main screen: who is watching now (StreamsSummary, StreamsDialog) ----------
+
+export const WatchCard = styled.div`
+  ${({ theme: { torrentCard } }) => css`
+    grid-column: 1 / -1;
+    padding: 12px 16px;
+    border-radius: 5px;
+    background: ${torrentCard.cardPrimaryColor};
+    color: #fff;
+    box-shadow: 0px 2px 4px -1px rgb(0 0 0 / 20%), 0px 4px 5px 0px rgb(0 0 0 / 14%), 0px 1px 10px 0px rgb(0 0 0 / 12%);
+    cursor: pointer;
+    transition: filter 0.2s;
+
+    :hover {
+      filter: brightness(1.08);
+    }
+
+    .watch-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 8px;
+      font-size: 15px;
+    }
+
+    .watch-total {
+      font-size: 13px;
+      opacity: 0.9;
+    }
+
+    .watch-row {
+      display: grid;
+      grid-template-columns: 110px 1fr auto;
+      align-items: center;
+      gap: 4px 16px;
+      padding: 8px 0;
+    }
+
+    .watch-row + .watch-row {
+      border-top: 1px solid rgb(255 255 255 / 15%);
+    }
+
+    .watch-paused {
+      opacity: 0.65;
+    }
+
+    .watch-device {
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .watch-what {
+      min-width: 0;
+    }
+
+    .watch-title {
+      font-size: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .watch-episode {
+      margin-left: 8px;
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .watch-bar {
+      height: 4px;
+      margin: 6px 0 4px;
+      border-radius: 2px;
+      background: rgb(255 255 255 / 20%);
+      overflow: hidden;
+    }
+
+    .watch-bar div {
+      height: 100%;
+      border-radius: 2px;
+      background: #fff;
+    }
+
+    .watch-meta {
+      font-size: 11px;
+      opacity: 0.8;
+    }
+
+    .watch-speed {
+      font-size: 18px;
+      font-weight: 300;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    @media (max-width: 700px) {
+      padding: 10px 12px;
+
+      .watch-row {
+        grid-template-columns: 1fr auto;
+      }
+
+      .watch-device {
+        grid-column: 1 / -1;
+      }
+
+      .watch-speed {
+        font-size: 15px;
+      }
+    }
+  `}
+`
+
+// a client in the dialog (StreamsDialog), in the look of the disk cache cards
+export const StreamCard = styled.div`
+  ${({ theme: { torrentCard }, dark }) => css`
+    padding: 14px 16px;
+    border-radius: 5px;
+    background: ${dark ? torrentCard.cardPrimaryColor : '#fff'};
+    box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+
+    & + & {
+      margin-top: 12px;
+    }
+
+    &.stream-card-ended {
+      opacity: 0.55;
+    }
+
+    .stream-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    .stream-card-device {
+      font-size: 17px;
+      font-weight: 600;
+    }
+
+    .stream-card-state {
+      margin-left: 10px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      background: rgb(127 127 127 / 18%);
+    }
+
+    .stream-card-live {
+      background: #d32f2f;
+      color: #fff;
+    }
+
+    .stream-card-speed {
+      font-size: 24px;
+      font-weight: 300;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stream-card-title {
+      margin-top: 8px;
+      font-size: 15px;
+      font-weight: 500;
+      line-height: 1.3;
+    }
+
+    .stream-card-sub {
+      margin-left: 8px;
+      font-size: 13px;
+      font-weight: 400;
+      opacity: 0.75;
+    }
+
+    .stream-card-file {
+      margin: 2px 0 10px;
+      font-size: 12px;
+      opacity: 0.7;
+      word-break: break-all;
+    }
+
+    .stream-card-pos {
+      margin-top: 6px;
+      font-size: 12px;
+      opacity: 0.85;
+    }
+
+    .stream-spark {
+      margin-top: 12px;
+    }
+
+    .stream-spark svg {
+      display: block;
+      width: 100%;
+      height: 48px;
+    }
+
+    .stream-spark-legend {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      opacity: 0.7;
+      margin-top: 2px;
+    }
+
+    .stream-spark-empty {
+      margin-top: 12px;
+      font-size: 12px;
+      opacity: 0.6;
+    }
+
+    .stream-card-facts {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 8px 20px;
+      margin: 14px 0 0;
+    }
+
+    .stream-card-facts dt {
+      font-size: 11px;
+      opacity: 0.65;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .stream-card-facts dd {
+      margin: 2px 0 0;
+      font-size: 13px;
+    }
+
+    .stream-card-ua {
+      margin-top: 12px;
+      font-size: 11px;
+      opacity: 0.6;
+      word-break: break-all;
+    }
+  `}
+`
+
 // ---------- main screen: summary above the torrent list ----------
 
 export const Summary = styled.div`
@@ -245,11 +488,6 @@ export const Summary = styled.div`
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-    }
-
-    .summary-client {
-      padding-left: 16px;
-      opacity: 0.8;
     }
 
     @media (max-width: 700px) {

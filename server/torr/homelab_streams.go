@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/anacrolix/torrent"
+
+	"server/torr/storage/torrstor"
 )
 
 const (
@@ -44,7 +46,7 @@ type hlSample struct {
 
 type hlStream struct {
 	hash, title, path, ip, ua string
-	length                    int64
+	length, fileOffset, pl    int64 // the file in the torrent and its piece length: how much of it is on disk
 	started                   time.Time
 
 	mu       sync.Mutex
@@ -87,8 +89,11 @@ func hlStreamOpen(req *http.Request, t *Torrent, file *torrent.File) *hlStream {
 		title = t.Torrent.Name()
 	}
 	s := &hlStream{
-		hash: t.Hash().HexString(), title: title, path: file.Path(), length: file.Length(),
+		hash: t.Hash().HexString(), title: title, path: file.Path(), length: file.Length(), fileOffset: file.Offset(),
 		ip: ip, ua: req.UserAgent(), started: time.Now(),
+	}
+	if info := file.Torrent().Info(); info != nil {
+		s.pl = info.PieceLength
 	}
 	hlStreamsMu.Lock()
 	hlStreams[s] = struct{}{}
@@ -155,6 +160,13 @@ type HomelabStreamClient struct {
 	Active      bool    `json:"active"`   // data flows now (otherwise paused or its buffer is full)
 	Connections int     `json:"connections"`
 	Ended       bool    `json:"ended"` // no request any more, listed for hlStreamLinger
+
+	FileLength int64   `json:"fileLength"`
+	Offset     int64   `json:"offset"`     // where the player reads, bytes of the file
+	OnDisk     float64 `json:"onDisk"`     // share of the file in the disk cache, -1 — unknown
+	NetSpeed   float64 `json:"netSpeed"`   // the torrent downloads from peers now, bytes per second
+	Peers      int     `json:"peers"`      // active peers of the torrent
+	TotalPeers int     `json:"totalPeers"` // known peers
 }
 
 // HomelabStreams — the clients now, the ones with most data flowing first.
@@ -178,8 +190,9 @@ func hlStreamClients(now time.Time) []HomelabStreamClient {
 	hlStreamsMu.Unlock()
 
 	type agg struct {
-		c        HomelabStreamClient
-		lastRead time.Time
+		c              HomelabStreamClient
+		lastRead       time.Time
+		fileOffset, pl int64
 	}
 	clients := map[string]*agg{}
 	for _, s := range streams {
@@ -189,8 +202,8 @@ func hlStreamClients(now time.Time) []HomelabStreamClient {
 		if a == nil {
 			a = &agg{c: HomelabStreamClient{
 				Device: hlDevice(s.ua), IP: s.ip, UA: s.ua, Hash: s.hash, Title: s.title, Path: s.path,
-				Since: s.started.Unix(), Ended: true,
-			}}
+				Since: s.started.Unix(), Ended: true, FileLength: s.length, OnDisk: -1,
+			}, fileOffset: s.fileOffset, pl: s.pl}
 			clients[key] = a
 		}
 		speed := 0.0
@@ -212,11 +225,27 @@ func hlStreamClients(now time.Time) []HomelabStreamClient {
 		if s.length > 0 && (a.lastRead.IsZero() || s.lastRead.After(a.lastRead)) && !s.lastRead.IsZero() {
 			a.lastRead = s.lastRead
 			a.c.Position = min(1, float64(s.offset)/float64(s.length))
+			a.c.Offset = s.offset
 		}
 		s.mu.Unlock()
 	}
 	out := make([]HomelabStreamClient, 0, len(clients))
+	complete := map[string][]bool{} // per torrent, for every client of it
 	for _, a := range clients {
+		c := &a.c
+		if _, ok := complete[c.Hash]; !ok {
+			complete[c.Hash] = torrstor.HomelabComplete(c.Hash)
+		}
+		if pieces := complete[c.Hash]; pieces != nil && a.pl > 0 && c.FileLength > 0 {
+			c.OnDisk = float64(hlSpanDone(a.fileOffset, c.FileLength, pieces, a.pl)) / float64(c.FileLength)
+		}
+		if tt := hlDlLoaded(c.Hash); tt != nil {
+			st := tt.Stats()
+			c.Peers, c.TotalPeers = st.ActivePeers, st.TotalPeers
+			if t := bts.GetTorrent(tt.InfoHash()); t != nil {
+				c.NetSpeed = t.DownloadSpeed
+			}
+		}
 		out = append(out, a.c)
 	}
 	sort.Slice(out, func(i, j int) bool {

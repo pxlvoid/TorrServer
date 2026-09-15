@@ -6,19 +6,36 @@ import { useEffect, useState } from 'react'
 import { getTorrServerHost } from 'utils/Hosts'
 
 const REFRESH_MS = 3000
+const HISTORY = 60 // points of speed history per client: 3 minutes of polls
 
 let snapshot = null
 let timer = null
 const listeners = new Set()
+const history = new Map() // client key → [{at, speed}], kept while the page is open
+
+export const clientKey = c => `${c.ip}|${c.ua}|${c.hash}|${c.path}`
 
 const load = () =>
   axios
     .get(`${getTorrServerHost()}/homelab/streams`)
     .then(({ data }) => {
       snapshot = data.clients || []
+      const now = Date.now()
+      const seen = new Set()
+      snapshot.forEach(c => {
+        const key = clientKey(c)
+        seen.add(key)
+        const points = history.get(key) || []
+        points.push({ at: now, speed: c.ended ? 0 : c.speed })
+        history.set(key, points.slice(-HISTORY))
+      })
+      history.forEach((_, key) => !seen.has(key) && history.delete(key))
       listeners.forEach(listener => listener(snapshot))
     })
     .catch(() => {}) // an old server: nothing shown
+
+// speed of a client over the last minutes (polled while the page was open)
+export const speedHistory = c => history.get(clientKey(c)) || []
 
 // the clients: [{device, ip, ua, hash, title, path, position, speed, bytes, since, active, connections, ended}]
 export function useHomelabStreams() {
