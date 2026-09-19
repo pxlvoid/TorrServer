@@ -57,34 +57,27 @@ func RemViewed(vv *Viewed) {
 }
 
 func ListViewed(hash string) []*Viewed {
-	var err error
 	if hash != "" {
 		buf := tdb.Get("Viewed", hash)
 		if len(buf) == 0 {
 			return []*Viewed{}
 		}
-		m := readIndexes(buf)
-		var ret []*Viewed
-		for i, tc := range m {
+		ret := []*Viewed{}
+		for i, tc := range readIndexes(buf) {
 			ret = append(ret, &Viewed{Hash: hash, FileIndex: i, TimeCode: tc})
-		}
-		return ret
-	} else {
-		var ret []*Viewed
-		keys := tdb.List("Viewed")
-		for _, key := range keys {
-			buf := tdb.Get("Viewed", key)
-			if len(buf) == 0 {
-				continue
-			}
-			m := readIndexes(buf)
-			for i, tc := range m {
-				ret = append(ret, &Viewed{Hash: key, FileIndex: i, TimeCode: tc})
-			}
 		}
 		return ret
 	}
 
-	log.TLogln("Error list viewed:", err)
-	return []*Viewed{}
+	ret := []*Viewed{}
+	for _, key := range tdb.List("Viewed") {
+		buf := tdb.Get("Viewed", key)
+		if len(buf) == 0 {
+			continue
+		}
+		for i, tc := range readIndexes(buf) {
+			ret = append(ret, &Viewed{Hash: key, FileIndex: i, TimeCode: tc})
+		}
+	}
+	return ret
 }
