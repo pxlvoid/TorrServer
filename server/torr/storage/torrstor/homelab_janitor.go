@@ -34,6 +34,9 @@ var (
 func HomelabStartJanitor() {
 	hlJanitorOnce.Do(func() {
 		go func() {
+			// measure the cache dir right away: until the first pass the fill does not know what the
+			// torrents that are not open already hold, and would size its window as if the cache were empty
+			hlJanitorPass(time.Now())
 			t := time.NewTicker(hlJanitorEvery)
 			defer t.Stop()
 			for {
@@ -158,6 +161,9 @@ func hlJanitorPass(now time.Time) (freed int64) {
 	sets := settings.GetHomelabSets()
 	root := hlRoot()
 
+	// captured before the count begins: a torrent opening or closing mid-pass invalidates it (homelab_budget.go)
+	epoch := hlBudgetEpoch.Load()
+
 	open := hlOpenSnapshot()
 	hlMu.Lock()
 	for _, h := range open {
@@ -166,7 +172,7 @@ func hlJanitorPass(now time.Time) (freed int64) {
 	hlMu.Unlock()
 
 	var cands []hlCand
-	var total int64
+	var total, closedTotal int64
 	openHash := make(map[string]bool, len(open))
 
 	// open caches: everything outside active reader windows is a candidate
@@ -205,28 +211,16 @@ func hlJanitorPass(now time.Time) (freed int64) {
 		pinned := meta != nil && meta.Pinned
 		for _, f := range files {
 			total += f.size
+			closedTotal += f.size
 			if !pinned {
 				cands = append(cands, hlCand{access: f.mtime, size: f.size, hash: e.Name(), path: f.path})
 			}
 		}
 	}
 
-	// budget: LimitGB, and never less than hlMinFree free on the disk
-	allowed := int64(-1)
-	if sets.LimitGB > 0 {
-		allowed = sets.LimitGB << 30
-	}
-	byDisk := false // the budget is the free space guard, not the limit
+	// budget: LimitGB, and never less than hlMinFree free on the disk (homelab_budget.go)
 	free, _, diskOK := hlDiskStat(root)
-	if diskOK && free < hlMinFree {
-		byFree := total - (hlMinFree - free)
-		if byFree < 0 {
-			byFree = 0
-		}
-		if allowed < 0 || byFree < allowed {
-			allowed, byDisk = byFree, true
-		}
-	}
+	allowed, byDisk := hlAllowed(total, free, diskOK)
 	overBudget := allowed >= 0 && total > allowed
 	target := allowed
 	if overBudget {
@@ -254,8 +248,12 @@ func hlJanitorPass(now time.Time) (freed int64) {
 		}
 	}
 	for hash, paths := range closed {
-		freed += hlRemoveClosed(hash, paths)
+		n := hlRemoveClosed(hash, paths)
+		freed, closedTotal = freed+n, closedTotal-n
 	}
+	// the reader windows of background fill are sized from this (homelab_budget.go); a full rescan of the
+	// cache dir is this pass, so hand it the answer instead of letting it scan again in a second
+	hlPublishClosed(epoch, closedTotal)
 	// everything evictable is gone and it still does not fit: the rest is pinned or being watched
 	if allowed >= 0 && total > allowed {
 		m := HomelabMessage{Event: HomelabEvDisk, Priority: 4, Tags: []string{"floppy_disk"}}

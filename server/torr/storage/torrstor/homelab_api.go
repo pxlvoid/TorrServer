@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	ErrHomelabNotReady = errors.New("disk cache is off: enable UseDisk and set TorrentsSavePath")
+	ErrHomelabNotReady = errors.New("no cache dir: set TorrentsSavePath in the settings")
 	ErrHomelabBadHash  = errors.New("bad hash")
 	ErrHomelabOpen     = errors.New("torrent is open by upstream cache, close it first")
 	ErrHomelabNotFound = errors.New("no cache for this torrent")
@@ -40,8 +40,11 @@ type HomelabItem struct {
 
 // HomelabUsage — the disk cache as a whole.
 type HomelabUsage struct {
-	Enabled   bool   `json:"enabled"` // persistent mode is on
-	Ready     bool   `json:"ready"`   // UseDisk and TorrentsSavePath are set
+	Enabled bool `json:"enabled"` // persistent mode is on and working
+	Ready   bool `json:"ready"`   // there is a cache dir to look at
+	// the upstream "use disk" switch. Off with Ready on — the cache is frozen: nothing is written to it
+	// and the janitor does not touch it, but what is left is listed and can be removed from the dialog.
+	UseDisk   bool   `json:"useDisk"`
 	Path      string `json:"path"`
 	Used      int64  `json:"used"`
 	Limit     int64  `json:"limit"` // 0 — no limit
@@ -49,9 +52,11 @@ type HomelabUsage struct {
 	DiskTotal int64  `json:"diskTotal"`
 }
 
+// hlReady — there is a cache dir to look at. UseDisk may be off: turning it off used to hide the whole
+// homelab UI, and whatever was already cached stayed on the disk with no way to get rid of it.
 func hlReady() bool {
 	b := settings.BTsets
-	return b != nil && b.UseDisk && b.TorrentsSavePath != ""
+	return b != nil && b.TorrentsSavePath != "" && b.TorrentsSavePath != "/"
 }
 
 func hlByHashGet(hash string) *hlCache {
@@ -74,6 +79,7 @@ func hlUpstreamOpen(hash string) *Cache {
 // HomelabList — torrents in the cache dir, most recently watched first.
 func HomelabList() ([]HomelabItem, HomelabUsage) {
 	u := HomelabUsage{Enabled: hlEnabled(), Ready: hlReady(), Path: hlRoot()}
+	u.UseDisk = settings.BTsets != nil && settings.BTsets.UseDisk
 	if sets := settings.GetHomelabSets(); sets.LimitGB > 0 {
 		u.Limit = sets.LimitGB << 30
 	}
@@ -144,6 +150,8 @@ func HomelabRemove(hash string) (freed int64, err error) {
 	if !hlIsHash(hash) {
 		return 0, ErrHomelabBadHash
 	}
+	defer hlInvalidateBudget() // the freed bytes are runway for background fill (homelab_budget.go)
+
 	if h := hlByHashGet(hash); h != nil {
 		for _, p := range h.c.getRemPieces() {
 			freed += p.Size
@@ -155,19 +163,23 @@ func HomelabRemove(hash string) (freed int64, err error) {
 		return 0, ErrHomelabOpen
 	}
 
-	hlMu.Lock()
-	defer hlMu.Unlock()
-	if hlIsOpenLocked(hash) {
-		return 0, ErrHomelabOpen
-	}
-	dir := filepath.Join(hlRoot(), hash)
-	if _, err := os.Stat(dir); err != nil {
-		return 0, ErrHomelabNotFound
-	}
-	for _, f := range hlPieceFiles(dir) {
-		freed += f.size
-	}
-	return freed, os.RemoveAll(dir)
+	freed, err = func() (int64, error) {
+		hlMu.Lock()
+		defer hlMu.Unlock()
+		if hlIsOpenLocked(hash) {
+			return 0, ErrHomelabOpen
+		}
+		dir := filepath.Join(hlRoot(), hash)
+		if _, err := os.Stat(dir); err != nil {
+			return 0, ErrHomelabNotFound
+		}
+		var n int64
+		for _, f := range hlPieceFiles(dir) {
+			n += f.size
+		}
+		return n, os.RemoveAll(dir)
+	}()
+	return freed, err
 }
 
 // HomelabSetPinned — pinned torrents are never evicted by the janitor.

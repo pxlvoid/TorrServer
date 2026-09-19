@@ -187,6 +187,7 @@ func hlOnInit(c *Cache, info *metainfo.Info) {
 	hlByHash[hash] = h
 	hlCaches.Store(c, h)
 	h.flushLocked()
+	hlInvalidateBudget() // its pieces move out of the cache dir scan and into this open cache
 }
 
 // hlOnClose — hook at the start of Cache.Close. true — the cache is persistent, RemoveCacheOnDrop does not apply.
@@ -202,6 +203,7 @@ func hlOnClose(c *Cache) bool {
 	}
 	h.flushLocked()
 	hlMu.Unlock()
+	hlInvalidateBudget() // its pieces are part of the cache dir scan again
 	return true
 }
 
@@ -218,15 +220,26 @@ func hlPieceImpl(c *Cache, p *Piece) storage.PieceImpl {
 	return p
 }
 
-// hlReaderEnd — hook in Reader.getOffsetRange: with BackgroundFill the reader window reaches the end of the
-// file, so while the file is open (playing or paused) upstream priorities download it to the end — the
-// piece under the player first, the rest behind it, all into the disk cache. Otherwise the window is
-// CacheSize ahead and a paused player gets a couple of minutes of buffer.
+// hlReaderEnd — hook in Reader.getOffsetRange: with BackgroundFill the reader window reaches past the
+// upstream window of CacheSize, so while the file is open (playing or paused) upstream priorities keep
+// downloading it — the piece under the player first, the rest behind it, all into the disk cache.
+// Otherwise the window is CacheSize ahead and a paused player gets a couple of minutes of buffer.
+//
+// It reaches only as far as the disk budget has room for (homelab_budget.go). Everything inside a reader
+// window is protected from eviction, so a window stretched to the end of the file left the janitor
+// nothing to drop and the cache grew to the size of the file whatever LimitGB said.
 func hlReaderEnd(c *Cache, fileLength, end int64) int64 {
 	if hlGet(c) == nil || !hlEnabled() || !settings.GetHomelabSets().BackgroundFill {
 		return end
 	}
-	return fileLength
+	ahead := hlFillAhead()
+	if ahead < 0 {
+		return fileLength // nothing limits the cache: the whole file, as before
+	}
+	if end >= fileLength-ahead {
+		return fileLength
+	}
+	return end + ahead
 }
 
 // hlAdjustState — hook at the end of Cache.GetState. Outside the state is what upstream reports: the window of

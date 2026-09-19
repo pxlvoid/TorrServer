@@ -4,8 +4,8 @@ package torrstor
 
 import "syscall"
 
-// homelab: free and total bytes of the filesystem holding path.
-func hlDiskStat(path string) (free, total int64, ok bool) {
+// homelab: free and total bytes of the filesystem holding path (reached through hlDiskStat).
+func hlDiskStatSys(path string) (free, total int64, ok bool) {
 	var st syscall.Statfs_t
 	if err := syscall.Statfs(path, &st); err != nil {
 		return 0, 0, false

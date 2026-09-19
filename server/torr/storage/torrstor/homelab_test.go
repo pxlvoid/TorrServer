@@ -24,9 +24,11 @@ func hlTestSettings(t *testing.T, sets settings.HomelabSets) string {
 	prevHL := settings.GetHomelabSets()
 	settings.BTsets = &settings.BTSets{UseDisk: true, TorrentsSavePath: root, RemoveCacheOnDrop: true}
 	settings.SetHomelabSetsForTest(sets)
+	hlInvalidateBudget() // the budget is measured per cache dir, and every test gets a fresh one
 	t.Cleanup(func() {
 		settings.BTsets = prevBT
 		settings.SetHomelabSetsForTest(prevHL)
+		hlInvalidateBudget()
 	})
 	return root
 }
@@ -199,6 +201,7 @@ func TestHomelabPieceMap(t *testing.T) {
 
 func TestHomelabReaderEnd(t *testing.T) {
 	hlTestSettings(t, settings.HomelabSets{PersistentCache: true, BackgroundFill: true})
+	hlTestNoDiskStat(t) // no limit and no disk stats: nothing bounds the window (homelab_budget_test.go)
 	info := &metainfo.Info{Name: "x", PieceLength: 16, Length: 64, Pieces: make([]byte, 4*20)}
 	impl, _ := NewStorage(64).OpenTorrent(info, metainfo.NewHashFromHex("ffffffffffffffffffffffffffffffffffffffff"))
 	c := impl.(*Cache)
@@ -237,6 +240,7 @@ func TestHomelabOffKeepsUpstream(t *testing.T) {
 
 func TestHomelabJanitorBudget(t *testing.T) {
 	root := hlTestSettings(t, settings.HomelabSets{PersistentCache: true, LimitGB: 4})
+	hlTestDiskStat(t, 100<<30, 200<<30) // a roomy disk: LimitGB is what binds
 	now := time.Now()
 	day := 24 * time.Hour
 	a := filepath.Join(root, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
@@ -268,6 +272,7 @@ func TestHomelabJanitorBudget(t *testing.T) {
 
 func TestHomelabJanitorKeepDays(t *testing.T) {
 	root := hlTestSettings(t, settings.HomelabSets{PersistentCache: true, KeepDays: 7})
+	hlTestDiskStat(t, 100<<30, 200<<30) // a roomy disk: only the age limit applies
 	now := time.Now()
 	old := filepath.Join(root, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	fresh := filepath.Join(root, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
