@@ -26,7 +26,7 @@ const load = () =>
         const key = clientKey(c)
         seen.add(key)
         const points = history.get(key) || []
-        points.push({ at: now, speed: c.ended ? 0 : c.speed })
+        points.push({ at: now, speed: c.ended ? 0 : c.speed, net: c.ended ? 0 : c.netSpeed || 0 })
         history.set(key, points.slice(-HISTORY))
       })
       history.forEach((_, key) => !seen.has(key) && history.delete(key))
@@ -36,6 +36,17 @@ const load = () =>
 
 // speed of a client over the last minutes (polled while the page was open)
 export const speedHistory = c => history.get(clientKey(c)) || []
+
+// How fast the torrent is downloading, averaged over the last seconds. netSpeed of a single poll swings
+// wildly (a few KB/s one second, tens of MB/s the next), and a verdict built on it would flap every poll.
+export function avgNetSpeed(c, seconds = 20) {
+  const points = speedHistory(c)
+  if (!points.length) return c.netSpeed || 0
+  const from = Date.now() - seconds * 1000
+  const recent = points.filter(p => p.at >= from)
+  const used = recent.length ? recent : points.slice(-1)
+  return used.reduce((sum, p) => sum + (p.net || 0), 0) / used.length
+}
 
 // the clients: [{device, ip, ua, hash, title, path, position, speed, bytes, since, active, connections, ended}]
 export function useHomelabStreams() {

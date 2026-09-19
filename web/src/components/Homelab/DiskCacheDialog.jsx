@@ -377,6 +377,13 @@ export default function DiskCacheDialog({ handleClose }) {
                   )}
                 </UsageRow>
                 {!!usage.limit && <Bar dark={dark} value={(usage.used / usage.limit) * 100} />}
+                {/* the cache path is set but "use disk" is off: the cache is frozen, say so instead of
+                    letting the leftovers sit there with the whole homelab UI hidden */}
+                {!usage.useDisk && (
+                  <Typography variant='body2' color='error' style={{ marginTop: 10 }}>
+                    {t('Homelab.DiskOff')}
+                  </Typography>
+                )}
               </Section>
             )}
 
@@ -395,7 +402,7 @@ export default function DiskCacheDialog({ handleClose }) {
                   <Switch
                     color='secondary'
                     checked={saved.persistentCache}
-                    disabled={!usage.ready || busy}
+                    disabled={!usage.ready || !usage.useDisk || busy} // the server rejects it without UseDisk
                     onChange={e => saveSettings({ ...saved, persistentCache: e.target.checked })}
                   />
                 </SettingsRow>

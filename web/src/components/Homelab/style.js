@@ -455,7 +455,7 @@ export const StreamCard = styled.div`
 
       .sc-top {
         display: grid;
-        grid-template-columns: 56px 1fr auto;
+        grid-template-columns: 56px 1fr;
         gap: 14px;
         align-items: start;
       }
@@ -513,23 +513,6 @@ export const StreamCard = styled.div`
         animation: sc-pulse 1.6s ease-in-out infinite;
       }
 
-      .sc-speed {
-        text-align: right;
-        white-space: nowrap;
-      }
-
-      .sc-speed b {
-        display: block;
-        font-size: 22px;
-        font-weight: 300;
-        font-variant-numeric: tabular-nums;
-      }
-
-      .sc-speed span {
-        font-size: 11px;
-        opacity: 0.7;
-      }
-
       .sc-time {
         display: flex;
         align-items: baseline;
@@ -566,25 +549,46 @@ export const StreamCard = styled.div`
         background: ${c.accent};
       }
 
+      /* the one thing worth reading at a glance: the verdict loud, the numbers behind it quiet */
       .sc-health {
         margin-top: 12px;
-        padding: 8px 10px;
+        padding: 9px 11px;
         border-radius: 5px;
-        font-size: 13px;
         line-height: 1.35;
         background: ${c.track};
+      }
+
+      .sc-health b {
+        display: block;
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .sc-health span {
+        display: block;
+        margin-top: 3px;
+        font-size: 12px;
+        opacity: 0.7;
       }
 
       .sc-good {
         border-left: 3px solid ${c.accent};
       }
 
+      .sc-good b {
+        color: ${c.accent};
+      }
+
       .sc-warn {
         border-left: 3px solid ${dark ? '#ffb74d' : '#e65100'};
       }
 
+      .sc-warn b {
+        color: ${dark ? '#ffb74d' : '#e65100'};
+      }
+
       .sc-graph {
-        margin-top: 14px;
+        margin-top: 10px;
       }
 
       .sc-graph svg {
@@ -650,18 +654,40 @@ export const StreamCard = styled.div`
       }
 
       @media (max-width: 500px) {
+        padding: 13px;
+
         .sc-top {
-          grid-template-columns: 48px 1fr;
+          grid-template-columns: 44px 1fr;
+          gap: 11px;
         }
 
         .sc-poster {
-          width: 48px;
-          height: 72px;
+          width: 44px;
+          height: 66px;
         }
 
-        .sc-speed {
-          grid-column: 1 / -1;
-          text-align: left;
+        .sc-title {
+          font-size: 16px;
+        }
+
+        .sc-time {
+          margin: 13px 0 6px;
+          flex-wrap: wrap; /* "1:29 / 59:18" and "57:49 left" wrap instead of squeezing each other */
+        }
+
+        .sc-time b {
+          font-size: 21px;
+        }
+
+        /* a two column list would leave the values a few characters wide on a phone */
+        .sc-details dl {
+          grid-template-columns: 1fr;
+          gap: 0;
+        }
+
+        .sc-details dt {
+          margin-top: 8px;
+          font-size: 12px;
         }
       }
     `

@@ -18,7 +18,16 @@ import useOnStandaloneAppOutsideClick from 'utils/useOnStandaloneAppOutsideClick
 
 import './i18n'
 import { parseTitle } from './parseTitle'
-import { clientKey, episodeOf, fmtTime, playerTime, sourceOf, speedHistory, useHomelabStreams } from './streams'
+import {
+  avgNetSpeed,
+  clientKey,
+  episodeOf,
+  fmtTime,
+  playerTime,
+  sourceOf,
+  speedHistory,
+  useHomelabStreams,
+} from './streams'
 import { StreamCard } from './style'
 
 const clock = unix => new Date(unix * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -62,40 +71,49 @@ function SpeedGraph({ points, bitrate, dark }) {
   )
 }
 
+// Will it keep playing? One answer, so the card has something to look at instead of a row of equally
+// loud numbers. The numbers behind the answer go to the quiet line under it, the rest into the details.
+// The network speed is averaged (avgNetSpeed): a single poll swings enough to flip the verdict every
+// three seconds.
+function useVerdict(c, time, src, net) {
+  const { t } = useTranslation()
+  if (c.ended) return null
+  if (src.kind === 'disk') return { tone: 'good', text: t('Homelab.StreamVerdictDisk') }
+  if (src.kind !== 'partial') return null
+  if (!c.active) return { tone: 'muted', text: t('Homelab.StreamVerdictPaused') }
+  if (!time) return { tone: 'muted', text: t('Homelab.StreamVerdictNet') } // no duration — nothing to compare with
+  if (net >= time.bitrate * 1.1) return { tone: 'good', text: t('Homelab.StreamVerdictEnough') }
+  if (net > 0) return { tone: 'warn', text: t('Homelab.StreamVerdictSlow') }
+  return { tone: 'warn', text: t('Homelab.StreamVerdictIdle') }
+}
+
 function ClientCard({ c, dark }) {
   const { t } = useTranslation()
   const { title, subtitle } = parseTitle(c.title || c.path)
   const time = playerTime(c)
   const src = sourceOf(c)
   const watched = Math.max(1, Date.now() / 1000 - c.since)
+  const net = avgNetSpeed(c)
+  const verdict = useVerdict(c, time, src, net)
 
   let state = t('Homelab.StreamStateActive')
   if (c.ended) state = t('Homelab.StreamEnded')
   else if (!c.active) state = t('Homelab.StreamPaused')
 
-  // whether it keeps up: from disk it does; from peers — their speed against the bitrate of the file
-  let health = { tone: 'muted', text: '' }
-  if (src.kind === 'disk') health = { tone: 'good', text: t('Homelab.StreamHealthDisk') }
-  else if (src.kind === 'partial') {
-    const net = c.netSpeed || 0
-    const peers = c.totalPeers ? t('Homelab.StreamPeers', { active: c.peers, total: c.totalPeers }) : ''
-    const base = t('Homelab.StreamHealthPartial', {
-      percent: Math.floor(src.share * 100),
-      speed: net > 0 ? humanizeSpeed(net) : t('Homelab.StreamNetIdle'),
-    })
-    if (time && net >= time.bitrate * 1.1)
-      health = { tone: 'good', text: `${base} — ${t('Homelab.StreamHealthEnough')}` }
-    else if (time) {
-      health = {
-        tone: 'warn',
-        text: `${base} — ${t('Homelab.StreamHealthSlow', { bitrate: humanizeSpeed(time.bitrate) })}`,
-      }
-    } else health = { tone: 'muted', text: base }
-    if (peers) health.text = `${health.text} · ${peers}`
-  }
+  const facts = [
+    src.kind === 'partial' && t('Homelab.StreamSrcPartial', { percent: Math.floor(src.share * 100) }),
+    src.kind === 'partial' && net > 0 && t('Homelab.StreamNet', { speed: humanizeSpeed(net) }),
+    src.kind === 'partial' && !!c.totalPeers && t('Homelab.StreamPeers', { active: c.peers, total: c.totalPeers }),
+  ].filter(Boolean)
 
   const details = [
     [t('Homelab.StreamFactFile'), (c.path || '').split('/').pop()],
+    [
+      t('Homelab.StreamFactSpeed'),
+      [c.active ? humanizeSpeed(c.speed) : t('Homelab.StreamPaused'), time && humanizeSpeed(time.bitrate)]
+        .filter(Boolean)
+        .join(` · ${t('Homelab.StreamBitrateShort')} `),
+    ],
     [t('Homelab.StreamFactSince'), `${clock(c.since)} · ${fmtTime(watched)}`],
     [
       t('Homelab.StreamFactSent'),
@@ -123,10 +141,6 @@ function ClientCard({ c, dark }) {
             {state} · {c.device}
           </div>
         </div>
-        <div className='sc-speed'>
-          <b>{c.active ? humanizeSpeed(c.speed) : '—'}</b>
-          {time && <span>{t('Homelab.StreamBitrate', { bitrate: humanizeSpeed(time.bitrate) })}</span>}
-        </div>
       </div>
 
       <div className='sc-time'>
@@ -144,12 +158,16 @@ function ClientCard({ c, dark }) {
         <div style={{ width: `${Math.max(0.5, c.position * 100)}%` }} />
       </div>
 
-      {health.text && <div className={`sc-health sc-${health.tone}`}>{health.text}</div>}
-
-      <SpeedGraph points={speedHistory(c)} bitrate={time?.bitrate} dark={dark} />
+      {verdict && (
+        <div className={`sc-health sc-${verdict.tone}`}>
+          <b>{verdict.text}</b>
+          {facts.length > 0 && <span>{facts.join(' · ')}</span>}
+        </div>
+      )}
 
       <details className='sc-details'>
         <summary>{t('Homelab.StreamDetails')}</summary>
+        <SpeedGraph points={speedHistory(c)} bitrate={time?.bitrate} dark={dark} />
         <dl>
           {details.map(([name, value]) => (
             <div key={name}>

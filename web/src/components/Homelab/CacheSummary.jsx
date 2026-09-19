@@ -33,7 +33,10 @@ export default function HomelabCacheSummary() {
         <div className='summary-main'>
           {t('Homelab.DiskCache')}:{' '}
           <b>{usage.limit ? t('Homelab.Used', { used, limit: humanizeSize(usage.limit) }) : used}</b>
-          {!settings?.persistentCache && ` · ${t('Homelab.SummaryOff')}`}
+          {/* "use disk" off wins over the persistent switch: nothing is written either way, and this is why */}
+          {!usage.useDisk
+            ? ` · ${t('Homelab.SummaryFrozen')}`
+            : !settings?.persistentCache && ` · ${t('Homelab.SummaryOff')}`}
         </div>
         <div className='summary-side'>
           {[
