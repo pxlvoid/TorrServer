@@ -30,11 +30,15 @@ type HomelabSets struct {
 	// Halfway through an episode of a series, quietly fetch the next one to disk, so autoplay starts it
 	// from the disk instead of buffering from peers (torr/homelab_nextep.go).
 	NextEpisode bool `json:"nextEpisode"`
+	// Stop the preload once the swarm is clearly faster than the file needs, instead of always buffering
+	// the configured share of CacheSize (torr/homelab_preload.go). Never buffers more than upstream would.
+	AdaptivePreload bool `json:"adaptivePreload"`
 }
 
 // fields missing in the stored JSON keep these values (BackgroundFill appeared later — stays on)
 var homelabDefaults = HomelabSets{
-	PersistentCache: false, LimitGB: 100, KeepDays: 7, BackgroundFill: true, NextEpisode: true,
+	PersistentCache: false, LimitGB: 100, KeepDays: 7,
+	BackgroundFill: true, NextEpisode: true, AdaptivePreload: true,
 }
 
 var (

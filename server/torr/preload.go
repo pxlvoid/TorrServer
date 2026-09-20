@@ -247,6 +247,14 @@ func (t *Torrent) Preload(index int, size int64) {
 		}
 		offset += int64(n)
 
+		// homelab: the swarm is far faster than the file needs — this much buffer is already enough
+		if hlPreloadStop(t, file, offset, pieceLength) {
+			t.PreloadSize = offset + startend // so the progress players watch reaches 100%
+			log.TLogln("homelab: preload cut short at", utils2.Format(float64(offset)),
+				"— the swarm outruns the file")
+			break
+		}
+
 		if readahead > 0 && readerStartEnd-(offset+int64(len(tmp))) < readahead {
 			readahead = 0
 			readerStart.SetReadahead(0)

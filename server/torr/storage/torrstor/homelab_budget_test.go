@@ -134,9 +134,15 @@ func TestHomelabReaderEndStopsAtBudget(t *testing.T) {
 	defer c.Close()
 
 	hlInvalidateBudget()
-	// upstream window ends at 1 GB into the file, the runway adds one more GB — not the whole 10 GB
-	if got, want := hlReaderEnd(c, 10*gb, gb), 2*gb; got != want {
-		t.Fatalf("window must stop at the budget: got %d want %d", got, want)
+	// The upstream window ends 1 GB into the file and the runway adds at most the 1 GB left of the budget —
+	// never the whole 10 GB, which is the bug this guards. Bounds rather than an exact value: the runway is
+	// shared between the readers in use, and in this package other tests may still hold some.
+	got := hlReaderEnd(c, 10*gb, gb)
+	if got <= gb {
+		t.Fatalf("background fill must reach past the upstream window, got %d", got)
+	}
+	if got > 2*gb {
+		t.Fatalf("window must stop at the budget (%d max), got %d", 2*gb, got)
 	}
 
 	// a file whose tail is within the runway is filled to its very end, so the last piece is not left out

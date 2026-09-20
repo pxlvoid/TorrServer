@@ -24,6 +24,10 @@ const en = {
     Cancel: 'Cancel',
     SummaryFill: 'downloads the open file to the end',
     SummaryNext: 'fetches the next episode',
+    SummaryPreload: 'preload sized to the swarm',
+    AdaptivePreload: 'Stop the preload once it is enough',
+    AdaptivePreloadHelp:
+      'The preload buffers the configured share of the cache for every file alike — the same wait for a well seeded episode and for a 4K remux nobody serves. With this on it stops early once the swarm is clearly faster than the file needs, so a fast file starts almost at once. It never buffers less than a safe minimum and never cuts the preload short on a thin swarm, where the buffer is what saves playback.',
     NextEpisode: 'Fetch the next episode in advance',
     NextEpisodeHelp:
       'In a series, once the episode being watched is fully on disk, the next one is quietly fetched too — so autoplay starts it from the disk instead of waiting for peers. It never competes with playback: it waits until the current episode needs no more network.',
@@ -256,6 +260,10 @@ const ru = {
     Cancel: 'Отмена',
     SummaryFill: 'докачивает открытый файл',
     SummaryNext: 'тянет следующую серию',
+    SummaryPreload: 'предзагрузка по рою',
+    AdaptivePreload: 'Обрывать предзагрузку, когда хватит',
+    AdaptivePreloadHelp:
+      'Предзагрузка набирает заданную долю кэша одинаково для всего — одно и то же ожидание для хорошо раздаваемой серии и для 4K-ремукса, который никто не отдаёт. С этой настройкой она обрывается раньше, как только видно, что рой заметно быстрее, чем нужно файлу: быстрый файл стартует почти сразу. Ниже безопасного минимума не опускается и на тонком рое предзагрузку не режет — там буфер как раз и спасает просмотр.',
     NextEpisode: 'Заранее качать следующую серию',
     NextEpisodeHelp:
       'У сериала, когда текущая серия целиком легла на диск, следом тихо качается следующая — чтобы автоплей запустил её с диска, а не ждал пиров. Просмотру не мешает: ждёт, пока текущей серии перестанет быть нужна сеть.',

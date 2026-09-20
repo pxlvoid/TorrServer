@@ -294,6 +294,7 @@ export default function DiskCacheDialog({ handleClose }) {
         keepDays: Math.max(0, parseInt(sets.keepDays, 10) || 0),
         backgroundFill: !!sets.backgroundFill, // the API stores the whole struct: never omit a field
         nextEpisode: !!sets.nextEpisode,
+        adaptivePreload: !!sets.adaptivePreload,
       })
       .then(({ data }) => {
         setForm(data)
@@ -325,13 +326,15 @@ export default function DiskCacheDialog({ handleClose }) {
     (String(form.limitGB) !== String(saved.limitGB) ||
       String(form.keepDays) !== String(saved.keepDays) ||
       !!form.backgroundFill !== !!saved.backgroundFill ||
-      !!form.nextEpisode !== !!saved.nextEpisode)
+      !!form.nextEpisode !== !!saved.nextEpisode ||
+      !!form.adaptivePreload !== !!saved.adaptivePreload)
   const settingsSummary = saved
     ? [
         saved.limitGB ? t('Homelab.SummaryLimit', { limit: saved.limitGB }) : t('Homelab.SummaryNoLimit'),
         saved.keepDays ? t('Homelab.SummaryDays', { count: saved.keepDays }) : t('Homelab.SummaryForever'),
         saved.backgroundFill && t('Homelab.SummaryFill'),
         saved.nextEpisode && t('Homelab.SummaryNext'),
+        saved.adaptivePreload && t('Homelab.SummaryPreload'),
       ]
         .filter(Boolean)
         .join(' · ')
@@ -433,6 +436,19 @@ export default function DiskCacheDialog({ handleClose }) {
                     />
                     <Typography variant='body2' color='textSecondary'>
                       {t('Homelab.NextEpisodeHelp')}
+                    </Typography>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          color='secondary'
+                          checked={!!form.adaptivePreload}
+                          onChange={e => setForm({ ...form, adaptivePreload: e.target.checked })}
+                        />
+                      }
+                      label={t('Homelab.AdaptivePreload')}
+                    />
+                    <Typography variant='body2' color='textSecondary'>
+                      {t('Homelab.AdaptivePreloadHelp')}
                     </Typography>
                     <div className='settings-fields'>
                       <TextField
