@@ -1,10 +1,15 @@
 package torrstor
 
 import (
+	"errors"
+
 	"github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/storage"
 	"server/settings"
 )
+
+// a piece with neither store: only reachable if NewPiece failed to make one
+var errNoStore = errors.New("piece has no store")
 
 type Piece struct {
 	storage.PieceImpl `json:"-"`
@@ -35,20 +40,29 @@ func NewPiece(id int, cache *Cache) *Piece {
 	return p
 }
 
+// Which store a piece uses is decided once, in NewPiece. Dispatching on the current UseDisk instead
+// would follow the setting the moment it is toggled, while every piece of an open torrent still has
+// only the other store: the nil one was dereferenced and the server died (a nil pointer panic on
+// "drop all torrents" right after "use disk" was switched off).
+
 func (p *Piece) WriteAt(b []byte, off int64) (n int, err error) {
-	if !settings.BTsets.UseDisk {
+	if p.mPiece != nil {
 		return p.mPiece.WriteAt(b, off)
-	} else {
+	}
+	if p.dPiece != nil {
 		return p.dPiece.WriteAt(b, off)
 	}
+	return 0, errNoStore
 }
 
 func (p *Piece) ReadAt(b []byte, off int64) (n int, err error) {
-	if !settings.BTsets.UseDisk {
+	if p.mPiece != nil {
 		return p.mPiece.ReadAt(b, off)
-	} else {
+	}
+	if p.dPiece != nil {
 		return p.dPiece.ReadAt(b, off)
 	}
+	return 0, errNoStore
 }
 
 func (p *Piece) MarkComplete() error {
@@ -69,13 +83,14 @@ func (p *Piece) Completion() storage.Completion {
 }
 
 func (p *Piece) Release() {
-	if !settings.BTsets.UseDisk {
+	if p.mPiece != nil {
 		p.mPiece.Release()
-	} else {
+	} else if p.dPiece != nil {
 		p.dPiece.Release()
 	}
-	// if !p.cache.isClosed {
+	if p.cache == nil || p.cache.torrent == nil {
+		return // released while the cache is being torn down
+	}
 	p.cache.torrent.Piece(p.Id).SetPriority(torrent.PiecePriorityNone)
 	p.cache.torrent.Piece(p.Id).UpdateCompletion()
-	//}
 }
