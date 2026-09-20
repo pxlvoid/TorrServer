@@ -39,7 +39,7 @@ HOOKS=(
   "server/server.go:1"
   "server/torr/apihelper.go:3"
   "server/torr/stream.go:1"
-  "server/torr/preload.go:1"
+  "server/torr/preload.go:2"
   "server/web/api/route.go:1"
   "web/src/components/App/Sidebar.jsx:2"
   "web/src/components/RemoveAll.jsx:3"

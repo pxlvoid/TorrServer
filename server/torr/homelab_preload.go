@@ -19,7 +19,9 @@ import (
 
 	"github.com/anacrolix/torrent"
 
+	"server/log"
 	"server/settings"
+	utils2 "server/utils"
 )
 
 const (
@@ -67,5 +69,11 @@ func hlPreloadStop(t *Torrent, file *torrent.File, got, pieceLength int64) bool 
 	if n := pieceLength * 2; n > floor {
 		floor = n
 	}
-	return hlPreloadEnough(hlBitrate(t, file), t.DownloadSpeed, got, floor)
+	bitrate := hlBitrate(t, file)
+	if !hlPreloadEnough(bitrate, t.DownloadSpeed, got, floor) {
+		return false
+	}
+	log.TLogln("homelab: preload cut short at", utils2.Format(float64(got)),
+		"— the swarm gives", utils2.Format(t.DownloadSpeed), "against a bitrate of", utils2.Format(bitrate))
+	return true
 }
