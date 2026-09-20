@@ -1,17 +1,16 @@
 // homelab: "on disk" badge on a torrent card poster (hook in TorrentCard): share of the torrent in the
 // disk cache — for a series episodes completely on disk, "3/8" — (with an arrow while it is being downloaded),
-// and a star if it is pinned; "▶ 18 Mbit/s" at the bottom while someone watches it (streams.js).
+// "▶ 18 Mbit/s" at the bottom while someone watches it (streams.js).
 // Nothing on disk and nobody watching — nothing shown.
 import GetAppIcon from '@material-ui/icons/GetApp'
 import StorageIcon from '@material-ui/icons/Storage'
-import StarIcon from '@material-ui/icons/Star'
 import { useTranslation } from 'react-i18next'
 import { humanizeSize, humanizeSpeed } from 'utils/Utils'
 
 import './i18n'
 import { useHomelabCache } from './store'
 import { useTorrentStreams } from './streams'
-import { LiveMark, PinMark, PosterBadge } from './style'
+import { LiveMark, PosterBadge } from './style'
 
 // who watches the torrent: "▶ 18 Mbit/s", "▶ 2 · 36 Mbit/s", "▶ paused"
 function Live({ hash }) {
@@ -55,11 +54,6 @@ export default function HomelabCacheBadge({ hash }) {
 
   return (
     <>
-      {item.pinned && (
-        <PinMark>
-          <StarIcon />
-        </PinMark>
-      )}
       <PosterBadge title={title}>
         <div className='badge-label'>
           {download ? <GetAppIcon /> : <StorageIcon />}

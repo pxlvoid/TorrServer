@@ -22,7 +22,7 @@ func TestHomelabDownloadsJsonDBRoundTrip(t *testing.T) {
 	t.Cleanup(func() { tdb, ReadOnly = oldDB, oldReadOnly })
 
 	jobs := []HomelabDownloadJob{
-		{Hash: "0123456789abcdef0123456789abcdef01234567", Files: []int{1, 3}, Added: 100, WasPinned: true},
+		{Hash: "0123456789abcdef0123456789abcdef01234567", Files: []int{1, 3}, Added: 100},
 		{Hash: "fedcba9876543210fedcba9876543210fedcba98", Added: 200},
 	}
 	SetHomelabDownloads(jobs)

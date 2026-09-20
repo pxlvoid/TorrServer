@@ -1,4 +1,4 @@
-// homelab: what the persistent disk cache holds — usage, settings, per-torrent pin / download / remove.
+// homelab: what the persistent disk cache holds — usage, settings, per-torrent download / remove.
 // Accent is "secondary": in the dark theme TorrServer's primary (#323637) is the dialog background.
 import axios from 'axios'
 import {
@@ -21,8 +21,6 @@ import DeleteIcon from '@material-ui/icons/Delete'
 import GetAppIcon from '@material-ui/icons/GetApp'
 import MovieIcon from '@material-ui/icons/Movie'
 import StopIcon from '@material-ui/icons/Stop'
-import StarIcon from '@material-ui/icons/Star'
-import StarBorderIcon from '@material-ui/icons/StarBorder'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { StyledDialog } from 'style/CustomMaterialUiStyles'
@@ -129,7 +127,7 @@ function CardEpisodes({ hash, dark }) {
   )
 }
 
-function CacheCard({ item, download, confirming, busy, dark, onPin, onRemove, onDownload, onStop, onOpen }) {
+function CacheCard({ item, download, confirming, busy, dark, onRemove, onDownload, onStop, onOpen }) {
   const { t } = useTranslation()
   const relativeTime = useRelativeTime()
   const [posterFailed, setPosterFailed] = useState(false)
@@ -163,7 +161,7 @@ function CacheCard({ item, download, confirming, busy, dark, onPin, onRemove, on
   )
 
   return (
-    <Card pinned={item.pinned} dark={dark}>
+    <Card dark={dark}>
       <Poster onClick={() => onOpen(item)} title={t('Homelab.OpenInfo')} style={{ cursor: 'pointer' }}>
         {item.poster && !posterFailed ? (
           <img src={item.poster} alt='' loading='lazy' onError={() => setPosterFailed(true)} />
@@ -187,12 +185,6 @@ function CacheCard({ item, download, confirming, busy, dark, onPin, onRemove, on
               ? action(t('Homelab.DownloadStop'), <StopIcon fontSize='small' />, () => onStop(item))
               : !complete &&
                 action(t('Homelab.DownloadAllHelp'), <GetAppIcon fontSize='small' />, () => onDownload(item))}
-            {action(
-              item.pinned ? t('Homelab.Unpin') : t('Homelab.Pin'),
-              item.pinned ? <StarIcon fontSize='small' /> : <StarBorderIcon fontSize='small' />,
-              () => onPin(item),
-              { color: item.pinned ? 'secondary' : 'default' },
-            )}
             {action(
               confirming ? t('Homelab.RemoveConfirm') : item.playing ? t('Homelab.RemovePlaying') : t('Homelab.Remove'),
               <DeleteIcon fontSize='small' />,
@@ -301,6 +293,7 @@ export default function DiskCacheDialog({ handleClose }) {
         limitGB: Math.max(0, parseInt(sets.limitGB, 10) || 0),
         keepDays: Math.max(0, parseInt(sets.keepDays, 10) || 0),
         backgroundFill: !!sets.backgroundFill, // the API stores the whole struct: never omit a field
+        nextEpisode: !!sets.nextEpisode,
       })
       .then(({ data }) => {
         setForm(data)
@@ -331,12 +324,14 @@ export default function DiskCacheDialog({ handleClose }) {
     saved &&
     (String(form.limitGB) !== String(saved.limitGB) ||
       String(form.keepDays) !== String(saved.keepDays) ||
-      !!form.backgroundFill !== !!saved.backgroundFill)
+      !!form.backgroundFill !== !!saved.backgroundFill ||
+      !!form.nextEpisode !== !!saved.nextEpisode)
   const settingsSummary = saved
     ? [
         saved.limitGB ? t('Homelab.SummaryLimit', { limit: saved.limitGB }) : t('Homelab.SummaryNoLimit'),
         saved.keepDays ? t('Homelab.SummaryDays', { count: saved.keepDays }) : t('Homelab.SummaryForever'),
         saved.backgroundFill && t('Homelab.SummaryFill'),
+        saved.nextEpisode && t('Homelab.SummaryNext'),
       ]
         .filter(Boolean)
         .join(' · ')
@@ -426,6 +421,19 @@ export default function DiskCacheDialog({ handleClose }) {
                     <Typography variant='body2' color='textSecondary'>
                       {t('Homelab.BackgroundFillHelp')}
                     </Typography>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          color='secondary'
+                          checked={!!form.nextEpisode}
+                          onChange={e => setForm({ ...form, nextEpisode: e.target.checked })}
+                        />
+                      }
+                      label={t('Homelab.NextEpisode')}
+                    />
+                    <Typography variant='body2' color='textSecondary'>
+                      {t('Homelab.NextEpisodeHelp')}
+                    </Typography>
                     <div className='settings-fields'>
                       <TextField
                         type='number'
@@ -490,7 +498,6 @@ export default function DiskCacheDialog({ handleClose }) {
                     confirming={confirmHash === item.hash}
                     busy={busy}
                     dark={dark}
-                    onPin={it => call({ action: 'pin', hash: it.hash, pinned: !it.pinned })}
                     onRemove={removeItem}
                     onDownload={it => downloadItem(it, 'start')}
                     onStop={it => downloadItem(it, 'stop')}
@@ -505,7 +512,7 @@ export default function DiskCacheDialog({ handleClose }) {
 
       <DialogActions>
         {/* mounted only when there is something to clear: UnsafeButton starts its countdown on mount */}
-        {items.some(it => !it.pinned) && (
+        {items.length > 0 && (
           <UnsafeButton
             timeout={3}
             startIcon={<DeleteIcon />}

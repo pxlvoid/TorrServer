@@ -8,7 +8,7 @@ package torrstor
 //   - per-torrent eviction is off (hook in Cache.cleanPieces); CacheSize only sizes the reader window;
 //   - a global janitor (homelab_janitor.go) keeps the cache directory within LimitGB, evicting the
 //     least recently accessed pieces across all torrents, and drops pieces not accessed for KeepDays.
-//     Pieces inside active reader windows and pinned torrents are never evicted;
+//     Pieces inside active reader windows and of a running download are never evicted;
 //   - pieces that passed the hash check are remembered in <hash>/.homelab.json and trusted after a
 //     restart. A piece file without that mark is re-checked by anacrolix (Completion.Ok=false)
 //     instead of being trusted by its size: chunks arrive out of order, so a full-size file can have holes.
@@ -45,7 +45,6 @@ type hlMeta struct {
 	PieceLength int64  `json:"pieceLength"`
 	PieceCount  int    `json:"pieceCount"`
 	LastAccess  int64  `json:"lastAccess"`
-	Pinned      bool   `json:"pinned,omitempty"`
 	// title and poster from the TorrServer list: the cache card keeps them after the torrent is removed from it
 	Title  string `json:"title,omitempty"`
 	Poster string `json:"poster,omitempty"`
@@ -178,7 +177,7 @@ func hlOnInit(c *Cache, info *metainfo.Info) {
 		LastAccess:  now,
 	}
 	if old != nil {
-		h.meta.Pinned, h.meta.Title, h.meta.Poster = old.Pinned, old.Title, old.Poster
+		h.meta.Title, h.meta.Poster = old.Title, old.Poster
 		if old.LastAccess > 0 {
 			h.meta.LastAccess = old.LastAccess // opening a torrent to list its files is not watching it
 		}
@@ -361,12 +360,6 @@ func (h *hlCache) setVerified(id int, ok bool) {
 	h.unverified[id] = false
 	h.dirty = true
 	h.mu.Unlock()
-}
-
-func (h *hlCache) pinned() bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.meta.Pinned
 }
 
 // release evicts a piece of an open cache.

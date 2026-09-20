@@ -24,7 +24,7 @@ export function refreshHomelabCache() {
     .catch(() => {}) // old server or no access: the homelab UI just stays hidden
 }
 
-// Lets the disk cache dialog push fresh data after remove / pin / clear without waiting for the poller.
+// Lets the disk cache dialog push fresh data after remove / clear without waiting for the poller.
 export const publishHomelabCache = publish
 
 export function useHomelabCache() {

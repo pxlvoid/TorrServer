@@ -7,7 +7,7 @@ package torr
 // reader on the file and moves it to the first piece that is not complete yet, so upstream piece priorities
 // — the same as for a player — fetch what is ahead of it (with background fill the window reaches the end
 // of the file). The reader is marked as a download, so the torrent is not shown as "playing".
-// A job pins the torrent: the janitor keeps what is done. Stopping a job leaves the pin as it was before.
+// While a job runs it holds its torrent, so the janitor does not evict what the job has just fetched.
 // Jobs run one at a time in the order added; the queue is stored in the DB and survives a restart.
 
 import (
@@ -47,7 +47,7 @@ const (
 	HomelabDlNotFound = "not_found" // the torrent is not in the TorrServer list
 	HomelabDlNoInfo   = "no_info"   // no metadata: nobody seeds it
 	HomelabDlNoFiles  = "no_files"  // the chosen files are not in the torrent
-	HomelabDlLimit    = "limit"     // does not fit into the cache limit next to what is pinned
+	HomelabDlLimit    = "limit"     // does not fit into the cache limit
 	HomelabDlDisk     = "disk"      // does not fit on the disk
 	HomelabDlDiskFull = "disk_full" // the disk filled up while downloading
 	HomelabDlFailed   = "failed"
@@ -166,6 +166,13 @@ func hlDlRemoveLocked(job *hlDlJob) {
 
 // HomelabDownloadStart queues files of a torrent (none — the whole torrent); adds to a job already queued.
 func HomelabDownloadStart(hash string, files []int) error {
+	return hlDlStart(hash, files, false)
+}
+
+// hlDlStart — HomelabDownloadStart; auto marks a job the server queued itself (the next episode of what is
+// being watched). An auto job never joins a job the user asked for: it is simply skipped, the user's job
+// knows better what it wants.
+func hlDlStart(hash string, files []int, auto bool) error {
 	hash = strings.ToLower(hash)
 	if !settings.HomelabPersistentCache() {
 		return &HomelabDlError{Code: HomelabDlOff}
@@ -195,12 +202,15 @@ func HomelabDownloadStart(hash string, files []int) error {
 	hlDlMu.Lock()
 	defer hlDlMu.Unlock()
 	_, job := hlDlFindLocked(hash)
+	if job != nil && auto {
+		return nil // something is already queued for this torrent, do not meddle with it
+	}
 	if job == nil {
 		job = &hlDlJob{HomelabDownloadJob: settings.HomelabDownloadJob{
 			Hash:      hash,
 			Files:     append([]int(nil), files...),
-			Added:     time.Now().Unix(),
-			WasPinned: torrstor.HomelabPinned(hash),
+			Added: time.Now().Unix(),
+			Auto:  auto,
 		}, state: "queued"}
 		hlDlJobs = append(hlDlJobs, job)
 	} else {
@@ -212,6 +222,7 @@ func HomelabDownloadStart(hash string, files []int) error {
 		if job.state == "error" {
 			job.state, job.err, job.retryAt = "queued", nil, time.Time{}
 		}
+		job.Auto = false // the user asked for it now: it goes first and reports like any other job
 	}
 	hlDlSaveLocked()
 	hlDlWake()
@@ -248,7 +259,7 @@ func HomelabDownloadStop(hash string, files []int) {
 	if job.cancel != nil {
 		job.cancel()
 	}
-	exited, wasPinned := job.exited, job.WasPinned
+	exited := job.exited
 	hlDlSaveLocked()
 	hlDlMu.Unlock()
 
@@ -257,9 +268,6 @@ func HomelabDownloadStop(hash string, files []int) {
 		case <-exited:
 		case <-time.After(5 * time.Second):
 		}
-	}
-	if !wasPinned {
-		_ = torrstor.HomelabSetPinned(hash, false)
 	}
 }
 
@@ -384,8 +392,17 @@ func hlDlNext() *hlDlJob {
 	hlDlMu.Lock()
 	defer hlDlMu.Unlock()
 	now := time.Now()
+	ready := func(j *hlDlJob) bool {
+		return j.state == "queued" || j.state == "error" && now.After(j.retryAt)
+	}
+	// what the user asked for goes first; the next episode we fetch on our own can wait
 	for _, j := range hlDlJobs {
-		if j.state == "queued" || j.state == "error" && now.After(j.retryAt) {
+		if !j.Auto && ready(j) {
+			return j
+		}
+	}
+	for _, j := range hlDlJobs {
+		if j.Auto && ready(j) {
 			return j
 		}
 	}
@@ -431,12 +448,14 @@ func hlDlLoop() {
 			hlDlRemoveLocked(job)
 			hlDlSaveLocked()
 			log.TLogln("homelab: download complete", job.Hash)
-			torrstor.HomelabNotify(torrstor.HomelabMessage{
-				Event:   torrstor.HomelabEvDownloadDone,
-				Title:   "Скачано на диск: " + job.title,
-				Message: fmt.Sprintf("%s, %s. Закреплено — уборщик не тронет.", job.label, hlGB(job.total)),
-				Tags:    []string{"arrow_down"},
-			})
+			if !job.Auto { // the next episode arriving by itself is housekeeping, not news
+				torrstor.HomelabNotify(torrstor.HomelabMessage{
+					Event:   torrstor.HomelabEvDownloadDone,
+					Title:   "Скачано на диск: " + job.title,
+					Message: fmt.Sprintf("%s, %s.", job.label, hlGB(job.total)),
+					Tags:    []string{"arrow_down"},
+				})
+			}
 		case errors.Is(err, errHlRotate):
 			hlDlRemoveLocked(job)
 			hlDlJobs = append(hlDlJobs, job)
@@ -448,6 +467,11 @@ func hlDlLoop() {
 			hlDlRemoveLocked(job)
 			hlDlSaveLocked()
 			log.TLogln("homelab: download dropped, torrent is not in the list", job.Hash)
+		case job.Auto:
+			// the next episode is a guess: does not fit, nobody seeds it — forget it, do not nag about it
+			hlDlRemoveLocked(job)
+			hlDlSaveLocked()
+			log.TLogln("homelab: next episode dropped", job.Hash, err)
 		case errors.As(err, &de):
 			job.state, job.err, job.retryAt = "error", de, time.Now().Add(hlDlRetry)
 			log.TLogln("homelab: download", job.Hash, err)
@@ -517,10 +541,9 @@ func hlDlRun(ctx context.Context, job *hlDlJob) error {
 	}
 	hlDlMu.Lock()
 	ids := append([]int(nil), job.Files...)
-	if !job.stopped {
-		_ = torrstor.HomelabSetPinned(job.Hash, true) // under hlDlMu: Stop restores the pin after us, never before
-	}
 	hlDlMu.Unlock()
+	// the janitor leaves this torrent alone while we fetch it, or it would evict what we have just written
+	defer torrstor.HomelabHoldDownload(job.Hash)()
 
 	pl := tt.Info().PieceLength
 	sel := hlDlSelect(tt, ids)
@@ -658,8 +681,8 @@ func hlDlTitle(job *hlDlJob) string {
 func hlDlErrorText(e *HomelabDlError) string {
 	switch e.Code {
 	case HomelabDlLimit:
-		return fmt.Sprintf("Не влезает в лимит кэша: нужно ещё %s, рядом с закреплённым осталось %s. "+
-			"Увеличьте лимит или открепите что-нибудь.", hlGB(e.Need), hlGB(e.Avail))
+		return fmt.Sprintf("Не влезает в лимит кэша: нужно ещё %s, а лимит оставляет %s. "+
+			"Увеличьте лимит.", hlGB(e.Need), hlGB(e.Avail))
 	case HomelabDlDisk:
 		return fmt.Sprintf("Не хватает места на диске: нужно ещё %s, доступно %s.", hlGB(e.Need), hlGB(e.Avail))
 	case HomelabDlDiskFull:
@@ -758,26 +781,23 @@ func hlSpanNext(start, length int64, complete []bool, pl int64) int {
 	return -1
 }
 
-// hlDlCheckSpace — need more bytes fit into the limit next to what is pinned, and onto the disk
-// (unpinned cache of other torrents counts as free: the janitor evicts it).
+// hlDlCheckSpace — the bytes still needed have to fit into the limit and onto the disk. The cache of
+// other torrents counts as free: the janitor evicts it when the limit binds.
 func hlDlCheckSpace(hash string, need int64) error {
 	if need <= 0 {
 		return nil
 	}
 	items, u := torrstor.HomelabList()
-	var pinnedOther, evictable, self int64
+	var evictable, self int64
 	for _, it := range items {
-		switch {
-		case it.Hash == hash:
+		if it.Hash == hash {
 			self += it.Size
-		case it.Pinned:
-			pinnedOther += it.Size
-		default:
+		} else {
 			evictable += it.Size
 		}
 	}
 	if u.Limit > 0 {
-		if avail := u.Limit - pinnedOther - self; need > avail {
+		if avail := u.Limit - self; need > avail {
 			return &HomelabDlError{Code: HomelabDlLimit, Need: need, Avail: max(avail, 0)}
 		}
 	}

@@ -1,6 +1,6 @@
 // homelab: "Remove all" and the persistent disk cache (hooks in RemoveAll). Removing torrents from the list keeps
-// their disk cache in persistent mode; a checkbox in the confirmation clears the unpinned cache too (pinned and
-// downloaded stays). Off by default — the cache stays, as for every removal.
+// their disk cache in persistent mode; a checkbox in the confirmation clears the disk cache too.
+// Off by default — the cache stays, as for every removal.
 import { Checkbox, DialogContent, FormControlLabel } from '@material-ui/core'
 import axios from 'axios'
 import { useEffect, useState } from 'react'
@@ -26,8 +26,8 @@ export function HomelabWipeOption() {
   }, [])
 
   if (!data?.usage?.enabled) return null
-  const unpinned = (data.items || []).filter(it => !it.pinned).reduce((sum, it) => sum + it.size, 0)
-  if (!unpinned) return null
+  const cached = (data.items || []).reduce((sum, it) => sum + it.size, 0)
+  if (!cached) return null
 
   return (
     <DialogContent>
@@ -41,13 +41,13 @@ export function HomelabWipeOption() {
             }}
           />
         }
-        label={t('Homelab.WipeClearCache', { size: humanizeSize(unpinned) })}
+        label={t('Homelab.WipeClearCache', { size: humanizeSize(cached) })}
       />
     </DialogContent>
   )
 }
 
-// replaces the upstream wipe call: with the checkbox, removes the torrents and then clears the unpinned cache
+// replaces the upstream wipe call: with the checkbox, removes the torrents and then clears the disk cache
 export function homelabRemoveAll(upstreamWipe) {
   if (!clearCache) return upstreamWipe()
   clearCache = false

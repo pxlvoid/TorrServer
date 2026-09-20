@@ -72,7 +72,7 @@ func TestHomelabOnRemoveDropsDownload(t *testing.T) {
 	hash := "0123456789abcdef0123456789abcdef01234567"
 	hlDlMu.Lock()
 	saved := hlDlJobs
-	hlDlJobs = []*hlDlJob{{HomelabDownloadJob: settings.HomelabDownloadJob{Hash: hash, WasPinned: true}, state: "queued"}}
+	hlDlJobs = []*hlDlJob{{HomelabDownloadJob: settings.HomelabDownloadJob{Hash: hash}, state: "queued"}}
 	hlDlMu.Unlock()
 	t.Cleanup(func() {
 		hlDlMu.Lock()

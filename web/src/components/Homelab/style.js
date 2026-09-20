@@ -87,7 +87,7 @@ export const CardList = styled.div`
 `
 
 export const Card = styled.div`
-  ${({ theme: { torrentCard, secondary }, pinned, dark }) => css`
+  ${({ theme: { torrentCard }, dark }) => css`
     display: grid;
     grid-template-columns: 48px 1fr;
     align-items: start;
@@ -96,7 +96,6 @@ export const Card = styled.div`
     border-radius: 5px;
     background: ${dark ? torrentCard.cardPrimaryColor : '#fff'};
     box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
-    border-left: 3px solid ${pinned ? secondary : 'transparent'};
 
     @media (max-width: 500px) {
       grid-template-columns: 40px 1fr;
@@ -864,36 +863,6 @@ export const LiveMark = styled.div`
     left: 3px;
     padding: 2px 5px;
     font-size: 9px;
-  }
-`
-
-export const PinMark = styled.div`
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: rgb(0 0 0 / 55%);
-  color: #ffd54f;
-  pointer-events: none;
-
-  svg {
-    font-size: 14px;
-    width: 1em !important;
-    height: 1em;
-    transform: none !important;
-  }
-
-  @media (max-width: 770px) {
-    width: 16px;
-    height: 16px;
-
-    svg {
-      font-size: 11px;
-    }
   }
 `
 

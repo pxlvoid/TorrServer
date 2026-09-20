@@ -26,12 +26,12 @@ func homelabRoutes(authorized gin.IRouter) {
 	authorized.GET("/homelab/streams", homelabStreams)
 	torrstor.HomelabStartJanitor()
 	torr.HomelabDownloadsStart()
+	torr.HomelabNextEpisodeStart()
 }
 
 type homelabCacheReq struct {
-	Action string `json:"action"` // list | remove | pin | clear
+	Action string `json:"action"` // list | remove | clear
 	Hash   string `json:"hash,omitempty"`
-	Pinned bool   `json:"pinned,omitempty"`
 }
 
 type homelabCacheItem struct {
@@ -122,8 +122,6 @@ func homelabCache(c *gin.Context) {
 		if errors.Is(err, torrstor.ErrHomelabNotFound) {
 			err = nil // only a queued download, nothing on disk yet
 		}
-	case "pin":
-		err = torrstor.HomelabSetPinned(req.Hash, req.Pinned)
 	case "clear":
 		freed = torrstor.HomelabClear()
 	default:

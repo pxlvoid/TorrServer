@@ -187,8 +187,8 @@ func hlJanitorPass(now time.Time) (freed int64) {
 				total += p.Size
 			}
 		}
-		if h.pinned() {
-			continue
+		if hlIsHeld(h.meta.Hash) {
+			continue // a download is fetching it; evicting now would only make it fetch again
 		}
 		for _, p := range c.getRemPieces() {
 			cands = append(cands, hlCand{access: p.Accessed, size: p.Size, hash: h.meta.Hash, h: h, p: p})
@@ -207,12 +207,11 @@ func hlJanitorPass(now time.Time) (freed int64) {
 			hlRemoveClosed(e.Name(), nil) // leftover dir without pieces
 			continue
 		}
-		meta, _ := hlReadMeta(dir)
-		pinned := meta != nil && meta.Pinned
+		held := hlIsHeld(e.Name())
 		for _, f := range files {
 			total += f.size
 			closedTotal += f.size
-			if !pinned {
+			if !held {
 				cands = append(cands, hlCand{access: f.mtime, size: f.size, hash: e.Name(), path: f.path})
 			}
 		}
@@ -254,17 +253,17 @@ func hlJanitorPass(now time.Time) (freed int64) {
 	// the reader windows of background fill are sized from this (homelab_budget.go); a full rescan of the
 	// cache dir is this pass, so hand it the answer instead of letting it scan again in a second
 	hlPublishClosed(epoch, closedTotal)
-	// everything evictable is gone and it still does not fit: the rest is pinned or being watched
+	// everything evictable is gone and it still does not fit: the rest is being watched or downloaded
 	if allowed >= 0 && total > allowed {
 		m := HomelabMessage{Event: HomelabEvDisk, Priority: 4, Tags: []string{"floppy_disk"}}
 		if byDisk {
 			m.Title = "TorrServer: на диске мало места"
-			m.Message = fmt.Sprintf("Свободно %s, а кэш %s — всё остальное закреплено или его смотрят. "+
-				"Открепите или удалите что-нибудь в «Кэше на диске».", hlGB(free), hlGB(total))
+			m.Message = fmt.Sprintf("Свободно %s, а кэш %s — остальное смотрят или качают. "+
+				"Удалите что-нибудь в «Кэше на диске».", hlGB(free), hlGB(total))
 		} else {
 			m.Title = "TorrServer: кэш не помещается в лимит"
-			m.Message = fmt.Sprintf("Кэш %s при лимите %s — всё остальное закреплено или его смотрят. "+
-				"Увеличьте лимит или открепите что-нибудь в «Кэше на диске».", hlGB(total), hlGB(allowed))
+			m.Message = fmt.Sprintf("Кэш %s при лимите %s — остальное смотрят или качают. "+
+				"Увеличьте лимит или удалите что-нибудь в «Кэше на диске».", hlGB(total), hlGB(allowed))
 		}
 		HomelabNotifyEvery("disk", 6*time.Hour, m)
 	}

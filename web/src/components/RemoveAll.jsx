@@ -50,7 +50,7 @@ export default function RemoveAll({ isOffline, isLoading }) {
             startIcon={<DeleteIcon />}
             variant='contained'
             onClick={() => {
-              homelabRemoveAll(fnRemoveAll) // homelab: optionally clears the unpinned disk cache too
+              homelabRemoveAll(fnRemoveAll) // homelab: optionally clears the disk cache too
               closeDialog()
             }}
             color='secondary'

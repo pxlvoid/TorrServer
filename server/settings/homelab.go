@@ -27,10 +27,15 @@ type HomelabSets struct {
 	// While a file is open (playing or paused), download it to the end instead of only the CacheSize
 	// window ahead of the player. Only in persistent mode: the rest lands in the disk cache.
 	BackgroundFill bool `json:"backgroundFill"`
+	// Halfway through an episode of a series, quietly fetch the next one to disk, so autoplay starts it
+	// from the disk instead of buffering from peers (torr/homelab_nextep.go).
+	NextEpisode bool `json:"nextEpisode"`
 }
 
 // fields missing in the stored JSON keep these values (BackgroundFill appeared later — stays on)
-var homelabDefaults = HomelabSets{PersistentCache: false, LimitGB: 100, KeepDays: 7, BackgroundFill: true}
+var homelabDefaults = HomelabSets{
+	PersistentCache: false, LimitGB: 100, KeepDays: 7, BackgroundFill: true, NextEpisode: true,
+}
 
 var (
 	homelabMu   sync.RWMutex
@@ -115,8 +120,10 @@ func HomelabPersistentCache() bool {
 type HomelabDownloadJob struct {
 	Hash      string `json:"hash"`
 	Files     []int  `json:"files,omitempty"` // file ids as in file_stats; empty — the whole torrent
-	Added     int64  `json:"added"`
-	WasPinned bool   `json:"wasPinned,omitempty"` // pinned before the job: a stopped job leaves the pin as it was
+	Added int64 `json:"added"`
+	// queued by the server itself — the next episode of what is being watched (torr/homelab_nextep.go).
+	// Such a job yields to the ones the user asked for and gives up quietly when it does not fit.
+	Auto bool `json:"auto,omitempty"`
 }
 
 // stored as an object: JsonDB (StoreSettingsInJson) keeps only objects under a key, not arrays

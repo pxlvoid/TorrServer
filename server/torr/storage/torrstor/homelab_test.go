@@ -92,7 +92,7 @@ func TestHomelabInitCompletionAndClose(t *testing.T) {
 	hlWriteFile(t, filepath.Join(dir, "2"), 8, old)  // partial
 	hlWriteFile(t, filepath.Join(dir, "3"), 10, old) // verified short last piece
 	if err := hlWriteMeta(dir, &hlMeta{Hash: hash.HexString(), PieceLength: 16, PieceCount: 4, LastAccess: 12345,
-		Pinned: true, Verified: hlEncodeBits([]bool{true, false, false, true})}); err != nil {
+		Verified: hlEncodeBits([]bool{true, false, false, true})}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -142,7 +142,7 @@ func TestHomelabInitCompletionAndClose(t *testing.T) {
 	if !bits[0] || !bits[1] || bits[2] || !bits[3] {
 		t.Fatalf("verified bits after close: %v", bits)
 	}
-	if !m.Pinned || m.LastAccess != 12345 || m.Name != "Season 1" {
+	if m.LastAccess != 12345 || m.Name != "Season 1" {
 		t.Fatalf("meta after close: %+v", m)
 	}
 	if hlByHashGet(hash.HexString()) != nil {
@@ -250,11 +250,9 @@ func TestHomelabJanitorBudget(t *testing.T) {
 	hlWriteFile(t, filepath.Join(a, "1"), 1<<30, now.Add(-10*day))
 	hlWriteFile(t, filepath.Join(b, "0"), 1<<30, now.Add(-3*day))
 	hlWriteFile(t, filepath.Join(b, "1"), 1<<30, now.Add(-1*day))
-	hlWriteFile(t, filepath.Join(c, "0"), 1<<30, now.Add(-20*day)) // pinned: oldest, but stays
+	hlWriteFile(t, filepath.Join(c, "0"), 1<<30, now.Add(-20*day)) // a download holds it: oldest, but stays
 	hlWriteFile(t, filepath.Join(c, "1"), 1<<30, now.Add(-20*day))
-	if err := hlWriteMeta(c, &hlMeta{Hash: filepath.Base(c), Pinned: true}); err != nil {
-		t.Fatal(err)
-	}
+	defer HomelabHoldDownload(filepath.Base(c))()
 
 	// 6 GB with a 4 GB limit → down to 95% of it (3.8 GB): both of A, then the older piece of B
 	hlJanitorPass(now)
@@ -266,7 +264,7 @@ func TestHomelabJanitorBudget(t *testing.T) {
 		t.Fatal("b: only the older piece must be evicted")
 	}
 	if !hlExists(filepath.Join(c, "0")) || !hlExists(filepath.Join(c, "1")) {
-		t.Fatal("c: pinned, must stay")
+		t.Fatal("c: a download is fetching it, must stay")
 	}
 }
 
@@ -293,27 +291,29 @@ func TestHomelabJanitorKeepDays(t *testing.T) {
 	}
 }
 
-func TestHomelabRemoveAndPin(t *testing.T) {
+func TestHomelabRemoveAndClear(t *testing.T) {
 	root := hlTestSettings(t, settings.HomelabSets{PersistentCache: true})
 	hash := "dddddddddddddddddddddddddddddddddddddddd"
 	dir := filepath.Join(root, hash)
 	hlWriteFile(t, filepath.Join(dir, "0"), 100, time.Now())
 
-	if err := HomelabSetPinned(hash, true); err != nil {
-		t.Fatal(err)
-	}
 	items, usage := HomelabList()
-	if len(items) != 1 || !items[0].Pinned || items[0].Size != 100 || usage.Used != 100 {
+	if len(items) != 1 || items[0].Size != 100 || usage.Used != 100 {
 		t.Fatalf("list: %+v %+v", items, usage)
-	}
-	if freed := HomelabClear(); freed != 0 || !hlExists(dir) {
-		t.Fatal("clear must skip pinned")
 	}
 	if freed, err := HomelabRemove(hash); err != nil || freed != 100 || hlExists(dir) {
 		t.Fatalf("remove: freed=%d err=%v", freed, err)
 	}
 	if _, err := HomelabRemove("../../etc"); err != ErrHomelabBadHash {
 		t.Fatalf("path traversal must be rejected: %v", err)
+	}
+
+	// nothing can be held back from a clear any more: it takes the whole cache
+	second := "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d"
+	sdir := filepath.Join(root, second)
+	hlWriteFile(t, filepath.Join(sdir, "0"), 50, time.Now())
+	if freed := HomelabClear(); freed != 50 || hlExists(sdir) {
+		t.Fatalf("clear must take everything: freed=%d", freed)
 	}
 }
 
@@ -346,12 +346,12 @@ func TestHomelabSetInfo(t *testing.T) {
 	hash := "efefefefefefefefefefefefefefefefefefefef"
 	dir := filepath.Join(root, hash)
 	hlWriteFile(t, filepath.Join(dir, "0"), 16, time.Now())
-	if err := hlWriteMeta(dir, &hlMeta{Hash: hash, Name: "The.Boys.S05", PieceLength: 16, PieceCount: 1, Pinned: true}); err != nil {
+	if err := hlWriteMeta(dir, &hlMeta{Hash: hash, Name: "The.Boys.S05", PieceLength: 16, PieceCount: 1}); err != nil {
 		t.Fatal(err)
 	}
 	HomelabSetInfo(hash, "Пацаны", "https://example.org/p.jpg")
 	items, _ := HomelabList()
-	if len(items) != 1 || items[0].SavedTitle != "Пацаны" || items[0].SavedPoster != "https://example.org/p.jpg" || !items[0].Pinned {
+	if len(items) != 1 || items[0].SavedTitle != "Пацаны" || items[0].SavedPoster != "https://example.org/p.jpg" {
 		t.Fatalf("items: %+v", items)
 	}
 }

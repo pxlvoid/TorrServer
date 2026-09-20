@@ -53,16 +53,25 @@ func HomelabIsOpen(hash string) bool {
 	return hlByHashGet(hash) != nil || hlUpstreamOpen(hash) != nil
 }
 
-// HomelabPinned — the torrent is pinned (never evicted by the janitor).
-func HomelabPinned(hash string) bool {
+// A download in progress holds its torrent: the janitor leaves its cache alone until the job ends.
+// Without it the janitor could evict, under the limit, the very pieces the job has just fetched, and the
+// job would fetch them again — forever. The hold is automatic and lasts only while the job runs; it is
+// what the manual pin used to be needed for.
+var hlHeld sync.Map // hash → struct{}
+
+// HomelabHoldDownload keeps the cache of a torrent while its download runs; the returned func releases it.
+func HomelabHoldDownload(hash string) func() {
 	if !hlIsHash(hash) {
-		return false
+		return func() {}
 	}
-	if h := hlByHashGet(hash); h != nil {
-		return h.pinned()
-	}
-	meta, _ := hlReadMeta(filepath.Join(hlRoot(), hash))
-	return meta != nil && meta.Pinned
+	hlHeld.Store(hash, struct{}{})
+	return func() { hlHeld.Delete(hash) }
+}
+
+// hlIsHeld — a download is running for this torrent.
+func hlIsHeld(hash string) bool {
+	_, ok := hlHeld.Load(hash)
+	return ok
 }
 
 // HomelabDiskFree — free space on the cache disk; ok=false if unknown.
